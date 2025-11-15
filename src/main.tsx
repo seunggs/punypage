@@ -13,8 +13,9 @@ import reportWebVitals from './reportWebVitals.ts'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60, // 1 minute
-      refetchOnWindowFocus: false,
+      staleTime: import.meta.env.PROD ? 1000 * 60 * 5 : 1000 * 60, // 5 min in prod, 1 min in dev
+      refetchOnWindowFocus: import.meta.env.PROD,
+      retry: import.meta.env.PROD ? 3 : 1,
     },
   },
 })
