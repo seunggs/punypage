@@ -15,6 +15,8 @@ function TestSupabase() {
   const deleteDocument = useDeleteDocument();
   const [counter, setCounter] = useState(1);
 
+  console.log('Test Supabase page loaded - testing GitHub Actions code review');
+
   const handleCreateDocument = () => {
     createDocument.mutate({
       title: `Test Document ${counter}`,
