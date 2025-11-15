@@ -9,8 +9,14 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TestSupabaseRouteImport } from './routes/test-supabase'
 import { Route as IndexRouteImport } from './routes/index'
 
+const TestSupabaseRoute = TestSupabaseRouteImport.update({
+  id: '/test-supabase',
+  path: '/test-supabase',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -19,28 +25,39 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/test-supabase': typeof TestSupabaseRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/test-supabase': typeof TestSupabaseRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/test-supabase': typeof TestSupabaseRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/test-supabase'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/test-supabase'
+  id: '__root__' | '/' | '/test-supabase'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  TestSupabaseRoute: typeof TestSupabaseRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/test-supabase': {
+      id: '/test-supabase'
+      path: '/test-supabase'
+      fullPath: '/test-supabase'
+      preLoaderRoute: typeof TestSupabaseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -53,6 +70,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  TestSupabaseRoute: TestSupabaseRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
