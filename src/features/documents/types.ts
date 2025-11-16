@@ -4,7 +4,7 @@ export interface Document {
   id: string;
   title: string;
   content: string;
-  user_id: string | null;
+  user_id: string;
   status: DocumentStatus;
   metadata: Record<string, unknown>;
   created_at: string;
@@ -14,7 +14,6 @@ export interface Document {
 export interface CreateDocumentInput {
   title: string;
   content: string;
-  user_id?: string | null;
   status?: DocumentStatus;
   metadata?: Record<string, unknown>;
 }

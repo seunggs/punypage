@@ -7,9 +7,16 @@ export function useCreateDocument() {
 
   return useMutation({
     mutationFn: async (input: CreateDocumentInput) => {
+      // Get the current user
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        throw new Error('You must be logged in to create a document');
+      }
+
       const { data, error } = await supabase
         .from('documents')
-        .insert([input])
+        .insert([{ ...input, user_id: user.id }])
         .select()
         .single();
 
