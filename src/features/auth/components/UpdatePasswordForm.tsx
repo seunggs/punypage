@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useUpdatePassword } from '../hooks/useUpdatePassword';
+import { PASSWORD_MIN_LENGTH, PASSWORD_VALIDATION } from '../constants';
 
 export function UpdatePasswordForm() {
   const navigate = useNavigate();
@@ -24,8 +25,8 @@ export function UpdatePasswordForm() {
       return;
     }
 
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (formData.password.length < PASSWORD_MIN_LENGTH) {
+      setError(PASSWORD_VALIDATION.errorMessage);
       return;
     }
 
@@ -57,7 +58,7 @@ export function UpdatePasswordForm() {
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               placeholder="••••••••"
               required
-              minLength={6}
+              minLength={PASSWORD_MIN_LENGTH}
             />
           </div>
           <div className="space-y-2">
@@ -69,7 +70,7 @@ export function UpdatePasswordForm() {
               onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
               placeholder="••••••••"
               required
-              minLength={6}
+              minLength={PASSWORD_MIN_LENGTH}
             />
           </div>
           {error && (

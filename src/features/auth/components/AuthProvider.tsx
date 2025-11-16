@@ -34,14 +34,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       if (session?.user) {
+        // Validate email exists
+        if (!session.user.email) {
+          console.error('User session missing email');
+          setState((prev) => ({
+            ...prev,
+            loading: false,
+            error: new Error('User session missing email')
+          }));
+          return;
+        }
+
         // Fetch profile data
-        fetchProfile(session.user.id).then((profile) => {
+        fetchProfile(session.user.id).then((result) => {
           setState({
             user: session.user as AuthUser,
-            profile,
+            profile: result.profile,
             session,
             loading: false,
-            error: null,
+            error: result.error,
             isAuthenticated: true,
           });
         });
@@ -55,6 +66,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
+        // Validate email exists
+        if (!session.user.email) {
+          console.error('User session missing email');
+          setState((prev) => ({
+            ...prev,
+            loading: false,
+            error: new Error('User session missing email')
+          }));
+          return;
+        }
+
         // Update auth state immediately, fetch profile in background
         setState({
           user: session.user as AuthUser,
@@ -66,8 +88,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
         });
 
         // Fetch profile asynchronously
-        fetchProfile(session.user.id).then((profile) => {
-          setState((prev) => ({ ...prev, profile }));
+        fetchProfile(session.user.id).then((result) => {
+          if (result.error) {
+            setState((prev) => ({
+              ...prev,
+              profile: null,
+              error: new Error('Failed to load profile data')
+            }));
+          } else {
+            setState((prev) => ({ ...prev, profile: result.profile }));
+          }
         });
       } else {
         setState({
@@ -89,7 +119,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
 }
 
-async function fetchProfile(userId: string): Promise<Profile | null> {
+async function fetchProfile(userId: string): Promise<{ profile: Profile | null; error: Error | null }> {
   try {
     const { data, error } = await supabase
       .from('profiles')
@@ -99,12 +129,12 @@ async function fetchProfile(userId: string): Promise<Profile | null> {
 
     if (error) {
       console.error('Error fetching profile:', error);
-      return null;
+      return { profile: null, error: new Error(error.message) };
     }
 
-    return data;
+    return { profile: data, error: null };
   } catch (err) {
     console.error('Exception fetching profile:', err);
-    return null;
+    return { profile: null, error: err instanceof Error ? err : new Error('Unknown error') };
   }
 }

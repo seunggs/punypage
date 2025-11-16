@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useSignUp } from '../hooks/useSignUp';
+import { PASSWORD_MIN_LENGTH } from '../constants';
 
 export function SignUpForm() {
   const navigate = useNavigate();
@@ -75,7 +76,7 @@ export function SignUpForm() {
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               placeholder="••••••••"
               required
-              minLength={6}
+              minLength={PASSWORD_MIN_LENGTH}
             />
           </div>
           {signUp.isError && (

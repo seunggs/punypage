@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from '@tanstack/react-router';
+import { useNavigate, Link, useSearch } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +11,7 @@ export function SignInForm() {
   const navigate = useNavigate();
   const signIn = useSignIn();
   const { isAuthenticated } = useAuth();
+  const search = useSearch({ from: '/sign-in' }) as { redirect?: string };
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -19,9 +20,10 @@ export function SignInForm() {
   // Navigate when authentication succeeds
   useEffect(() => {
     if (isAuthenticated && signIn.isSuccess) {
-      navigate({ to: '/' });
+      const redirectTo = search.redirect || '/';
+      navigate({ to: redirectTo });
     }
-  }, [isAuthenticated, signIn.isSuccess, navigate]);
+  }, [isAuthenticated, signIn.isSuccess, navigate, search.redirect]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
