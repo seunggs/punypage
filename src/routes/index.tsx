@@ -1,7 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import logo from '../logo.svg'
+import { requireAuth } from '@/features/auth/utils/routeProtection'
 
 export const Route = createFileRoute('/')({
+  beforeLoad: requireAuth,
   component: App,
 })
 

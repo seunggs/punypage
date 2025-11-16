@@ -1,10 +1,22 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 
 import { useState } from 'react'
-import { Home, Menu, X } from 'lucide-react'
+import { Home, Menu, X, LogOut, User } from 'lucide-react'
+import { useAuth } from '@/features/auth/hooks/useAuth'
+import { useSignOut } from '@/features/auth/hooks/useSignOut'
+import { Button } from './ui/button'
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false)
+  const { user, isAuthenticated } = useAuth()
+  const signOut = useSignOut()
+  const navigate = useNavigate()
+
+  const handleSignOut = async () => {
+    await signOut.mutateAsync()
+    setIsOpen(false)
+    navigate({ to: '/sign-in' })
+  }
 
   return (
     <>
@@ -61,6 +73,26 @@ export default function Header() {
 
           {/* Demo Links End */}
         </nav>
+
+        {isAuthenticated && (
+          <div className="p-4 border-t border-gray-700">
+            <div className="flex items-center gap-3 mb-3 p-2">
+              <User size={20} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{user?.email}</p>
+              </div>
+            </div>
+            <Button
+              onClick={handleSignOut}
+              variant="outline"
+              className="w-full flex items-center gap-2"
+              disabled={signOut.isPending}
+            >
+              <LogOut size={16} />
+              {signOut.isPending ? 'Signing out...' : 'Sign out'}
+            </Button>
+          </div>
+        )}
       </aside>
     </>
   )
