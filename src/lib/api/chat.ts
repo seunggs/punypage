@@ -90,6 +90,12 @@ export async function sendMessage(
       // Only call onError if not aborted
       if (error instanceof Error && error.name !== 'AbortError') {
         onError(error.message);
+      } else if (error && typeof error === 'object') {
+        // Handle non-Error objects
+        onError(JSON.stringify(error));
+      } else if (error) {
+        // Handle primitives
+        onError(String(error));
       }
     } finally {
       // Clean up reader

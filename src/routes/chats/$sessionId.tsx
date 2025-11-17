@@ -73,11 +73,20 @@ function Chat() {
     setMessages((prev) => [...prev, userMessage]);
 
     // Save user message to Supabase
-    saveMessage.mutate({
-      session_id: sessionId,
-      role: 'user',
-      content: message,
-    });
+    saveMessage.mutate(
+      {
+        session_id: sessionId,
+        role: 'user',
+        content: message,
+      },
+      {
+        onError: (error) => {
+          console.error('Failed to save user message:', error);
+          // User message is already shown in UI, so don't remove it
+          // but log the error for debugging
+        },
+      }
+    );
 
     setIsStreaming(true);
     setStreamingContent('');
@@ -102,19 +111,35 @@ function Chat() {
           ]);
 
           // Save assistant message to Supabase
-          saveMessage.mutate({
-            session_id: sessionId,
-            role: 'assistant',
-            content: accumulatedContent,
-          });
+          saveMessage.mutate(
+            {
+              session_id: sessionId,
+              role: 'assistant',
+              content: accumulatedContent,
+            },
+            {
+              onError: (error) => {
+                console.error('Failed to save assistant message:', error);
+                // Message is already shown in UI, log error for debugging
+              },
+            }
+          );
         }
 
         // Update session with sdk_session_id if received
         if (data.sdkSessionId) {
-          updateSession.mutate({
-            id: sessionId,
-            sdk_session_id: data.sdkSessionId,
-          });
+          updateSession.mutate(
+            {
+              id: sessionId,
+              sdk_session_id: data.sdkSessionId,
+            },
+            {
+              onError: (error) => {
+                console.error('Failed to update session SDK ID:', error);
+                // Session will still work, just won't have SDK ID for next resume
+              },
+            }
+          );
         }
 
         setStreamingContent('');

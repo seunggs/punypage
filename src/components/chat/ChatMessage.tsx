@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -9,7 +10,7 @@ export interface ChatMessageProps {
   content: string;
 }
 
-export function ChatMessage({ role, content }: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({ role, content }: ChatMessageProps) {
   const isUser = role === 'user';
 
   const components = {
