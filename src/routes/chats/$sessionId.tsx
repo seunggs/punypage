@@ -41,6 +41,21 @@ function Chat() {
     }
   }, [loadedMessages]);
 
+  // Check if we need to resume streaming when returning to this session
+  // This happens when the agent is still working after user navigated away
+  useEffect(() => {
+    // Only attempt resume if we have a session with sdk_session_id but no ongoing stream
+    if (session?.sdk_session_id && !isStreaming && loadedMessages) {
+      // Check if the last message is from the user (means agent might still be working)
+      const lastMessage = loadedMessages[loadedMessages.length - 1];
+      if (lastMessage?.role === 'user') {
+        // TODO: Implement resume logic - this would require tracking active sessions
+        // For now, the agent will complete in the background and save to DB
+        // User can refresh to see the result
+      }
+    }
+  }, [session, isStreaming, loadedMessages]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -72,6 +87,7 @@ function Chat() {
     // Use sdk_session_id from loaded session for resume
     const sdkSessionId = session?.sdk_session_id || undefined;
 
+    // Start streaming - connection persists even when navigating away
     await sendMessage(message, sdkSessionId, {
       onMessage: (msg) => {
         accumulatedContent += msg.content;
