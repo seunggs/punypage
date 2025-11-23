@@ -22,7 +22,7 @@ export function DocumentsList() {
           onClick={() => setDialogOpen(true)}
           className="h-6 w-6 p-0"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-4 w-4 text-gray-500 dark:text-gray-400" strokeWidth={1.5} />
         </Button>
       </div>
 
