@@ -1,6 +1,8 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import sse from '@fastify/sse';
 import healthRoutes from './routes/health';
+import { chatRoutes } from './routes/chat.js';
 
 const server = Fastify({
   logger: {
@@ -18,7 +20,10 @@ const server = Fastify({
 
 async function start() {
   try {
-    // Register CORS
+    // Register SSE plugin first
+    await server.register(sse);
+
+    // Then register CORS
     await server.register(cors, {
       origin: process.env.FRONTEND_URL || 'http://localhost:6000',
       credentials: true,
@@ -26,6 +31,7 @@ async function start() {
 
     // Register routes
     await server.register(healthRoutes, { prefix: '/api' });
+    await server.register(chatRoutes, { prefix: '/api' });
 
     const port = parseInt(process.env.PORT || '4000', 10);
     const host = process.env.HOST || '0.0.0.0';
