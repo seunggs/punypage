@@ -107,4 +107,4 @@ export const ChatMessage = memo(function ChatMessage({ role, content }: ChatMess
       </div>
     </div>
   );
-}
+});
