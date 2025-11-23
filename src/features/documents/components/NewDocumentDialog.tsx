@@ -67,7 +67,7 @@ export function NewDocumentDialog({ open, onOpenChange }: NewDocumentDialogProps
 
         <form onSubmit={handleSubmit}>
           <div className="space-y-4">
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="title">Title</Label>
               <Input
                 id="title"
@@ -78,7 +78,7 @@ export function NewDocumentDialog({ open, onOpenChange }: NewDocumentDialogProps
               />
             </div>
 
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="path">Path</Label>
               <Input
                 id="path"
