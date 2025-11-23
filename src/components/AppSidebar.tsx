@@ -5,10 +5,7 @@ import {
   SidebarFooter,
   SidebarHeader,
 } from '@/components/ui/sidebar';
-import { Separator } from '@/components/ui/separator';
 import { DocumentsList } from '@/features/documents/components/DocumentsList';
-import { NewChatButton } from './sidebar/NewChatButton';
-import { RecentChatsList } from './sidebar/RecentChatsList';
 import { UserMenu } from './sidebar/UserMenu';
 
 export function AppSidebar() {
@@ -22,19 +19,6 @@ export function AppSidebar() {
 
       <SidebarContent className="gap-0">
         <DocumentsList />
-
-        <Separator />
-
-        <div className="p-4 pb-6">
-          <NewChatButton />
-        </div>
-
-        <div className="p-2">
-          <h2 className="px-2 py-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-            Recent Chats
-          </h2>
-          <RecentChatsList />
-        </div>
       </SidebarContent>
 
       <SidebarFooter className="border-t border-gray-200 dark:border-gray-800 p-4">
