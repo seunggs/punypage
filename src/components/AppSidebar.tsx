@@ -14,9 +14,9 @@ import { UserMenu } from './sidebar/UserMenu';
 export function AppSidebar() {
   return (
     <Sidebar className="border-r border-gray-200 dark:border-gray-800">
-      <SidebarHeader className="border-b border-gray-200 dark:border-gray-800 px-4 h-12 flex items-center">
+      <SidebarHeader className="border-b border-gray-200 dark:border-gray-800 px-4 h-12">
         <Link to="/">
-          <h1 className="text-base font-semibold">Punypage</h1>
+          <h1 className="text-base font-normal">Punypage</h1>
         </Link>
       </SidebarHeader>
 
