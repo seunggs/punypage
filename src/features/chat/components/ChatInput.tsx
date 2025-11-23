@@ -39,7 +39,7 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
       <Button
         onClick={handleSend}
         disabled={disabled || !input.trim()}
-        className="flex-shrink-0 w-10 h-10 bg-lime-500 hover:bg-lime-600 rounded-xl"
+        className="flex-shrink-0 w-10 h-10 bg-lime-500 hover:bg-lime-600 rounded-lg"
         size="icon"
       >
         <ArrowUp size={18} />
