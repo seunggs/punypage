@@ -12,7 +12,7 @@ export interface AuthState {
   profile: Profile | null;
   session: Session | null;
   loading: boolean;
-  error: SupabaseAuthError | null;
+  error: SupabaseAuthError | Error | null;
   isAuthenticated: boolean;
 }
 

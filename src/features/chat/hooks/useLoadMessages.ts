@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import type { ChatMessage } from '@/types/database.types';
+import type { ChatMessage } from '../types';
 
 export function useLoadMessages(sessionId: string) {
   return useQuery({

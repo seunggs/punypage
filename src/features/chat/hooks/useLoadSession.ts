@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import type { ChatSession } from '@/types/database.types';
+import type { ChatSession } from '../types';
 
 export function useLoadSession(sessionId: string) {
   return useQuery({

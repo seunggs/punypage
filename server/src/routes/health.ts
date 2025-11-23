@@ -1,10 +1,10 @@
-import { FastifyInstance, FastifyPluginOptions } from 'fastify';
+import type { FastifyInstance, FastifyPluginOptions } from 'fastify';
 
 export default async function healthRoutes(
   fastify: FastifyInstance,
-  options: FastifyPluginOptions
+  _options: FastifyPluginOptions
 ) {
-  fastify.get('/health', async (request, reply) => {
+  fastify.get('/health', async () => {
     return {
       status: 'ok',
       timestamp: new Date().toISOString(),

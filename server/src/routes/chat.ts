@@ -71,7 +71,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
             }
           }
         } catch (streamError) {
-          fastify.log.error('Stream error:', streamError);
+          fastify.log.error({ err: streamError }, 'Stream error');
           await reply.sse.send({
             event: 'error',
             data: {

@@ -20,6 +20,7 @@ function TestSupabase() {
   const handleCreateDocument = () => {
     createDocument.mutate({
       title: `Test Document ${counter}`,
+      path: `/test/document-${counter}.md`,
       content: `This is test content for document ${counter}. Created at ${new Date().toISOString()}`,
       status: 'draft',
       metadata: { test: true, counter },
@@ -98,7 +99,11 @@ function TestSupabase() {
                       Delete
                     </Button>
                   </div>
-                  <p className="text-gray-700 mb-2">{doc.content}</p>
+                  <p className="text-gray-700 mb-2">
+                    {typeof doc.content === 'string'
+                      ? doc.content
+                      : JSON.stringify(doc.content)}
+                  </p>
                   <div className="flex gap-4 text-sm text-gray-500">
                     <span className="bg-gray-100 px-2 py-1 rounded">
                       Status: {doc.status}

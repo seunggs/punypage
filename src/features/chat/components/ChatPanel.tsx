@@ -1,35 +1,34 @@
-import { createFileRoute } from '@tanstack/react-router';
 import { useState, useEffect, useRef } from 'react';
-import { ChatMessage } from '@/components/chat/ChatMessage';
-import { ChatInput } from '@/components/chat/ChatInput';
+import { ChatMessage } from './ChatMessage';
+import { ChatInput } from './ChatInput';
 import { sendMessage } from '@/lib/api/chat';
-import { useUpdateChatSession } from '@/features/chat/hooks/useChatSession';
-import { useSaveChatMessage } from '@/features/chat/hooks/useChatMessages';
-import { useLoadSession } from '@/features/chat/hooks/useLoadSession';
-import { useLoadMessages } from '@/features/chat/hooks/useLoadMessages';
-
-export const Route = createFileRoute('/chats/$sessionId')({
-  component: Chat,
-});
+import { useUpdateChatSession } from '../hooks/useChatSession';
+import { useSaveChatMessage } from '../hooks/useChatMessages';
+import { useLoadMessages } from '../hooks/useLoadMessages';
+import type { ChatSession } from '../types';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { MessageSquare, Loader2 } from 'lucide-react';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
 
-function Chat() {
-  const { sessionId } = Route.useParams();
+interface ChatPanelProps {
+  session: ChatSession;
+}
+
+export function ChatPanel({ session }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { data: session, isLoading: sessionLoading } = useLoadSession(sessionId);
-  const { data: loadedMessages, isLoading: messagesLoading } = useLoadMessages(sessionId);
+  const { data: loadedMessages, isLoading: messagesLoading } = useLoadMessages(session.id);
   const updateSession = useUpdateChatSession();
   const saveMessage = useSaveChatMessage();
 
-  // Load messages from database on mount
+  // Load messages from database
   useEffect(() => {
     if (loadedMessages) {
       setMessages(
@@ -40,21 +39,6 @@ function Chat() {
       );
     }
   }, [loadedMessages]);
-
-  // Check if we need to resume streaming when returning to this session
-  // This happens when the agent is still working after user navigated away
-  useEffect(() => {
-    // Only attempt resume if we have a session with sdk_session_id but no ongoing stream
-    if (session?.sdk_session_id && !isStreaming && loadedMessages) {
-      // Check if the last message is from the user (means agent might still be working)
-      const lastMessage = loadedMessages[loadedMessages.length - 1];
-      if (lastMessage?.role === 'user') {
-        // TODO: Implement resume logic - this would require tracking active sessions
-        // For now, the agent will complete in the background and save to DB
-        // User can refresh to see the result
-      }
-    }
-  }, [session, isStreaming, loadedMessages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -75,15 +59,13 @@ function Chat() {
     // Save user message to Supabase
     saveMessage.mutate(
       {
-        session_id: sessionId,
+        session_id: session.id,
         role: 'user',
         content: message,
       },
       {
         onError: (error) => {
           console.error('Failed to save user message:', error);
-          // User message is already shown in UI, so don't remove it
-          // but log the error for debugging
         },
       }
     );
@@ -93,10 +75,10 @@ function Chat() {
 
     let accumulatedContent = '';
 
-    // Use sdk_session_id from loaded session for resume
-    const sdkSessionId = session?.sdk_session_id || undefined;
+    // Use sdk_session_id from session for resume
+    const sdkSessionId = session.sdk_session_id || undefined;
 
-    // Start streaming - connection persists even when navigating away
+    // Start streaming
     await sendMessage(message, sdkSessionId, {
       onMessage: (msg) => {
         accumulatedContent += msg.content;
@@ -113,14 +95,13 @@ function Chat() {
           // Save assistant message to Supabase
           saveMessage.mutate(
             {
-              session_id: sessionId,
+              session_id: session.id,
               role: 'assistant',
               content: accumulatedContent,
             },
             {
               onError: (error) => {
                 console.error('Failed to save assistant message:', error);
-                // Message is already shown in UI, log error for debugging
               },
             }
           );
@@ -130,13 +111,12 @@ function Chat() {
         if (data.sdkSessionId) {
           updateSession.mutate(
             {
-              id: sessionId,
+              id: session.id,
               sdk_session_id: data.sdkSessionId,
             },
             {
               onError: (error) => {
                 console.error('Failed to update session SDK ID:', error);
-                // Session will still work, just won't have SDK ID for next resume
               },
             }
           );
@@ -160,28 +140,38 @@ function Chat() {
     });
   };
 
-  if (sessionLoading || messagesLoading) {
+  if (messagesLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-full">
         <div className="text-gray-500">Loading chat...</div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900">
       {/* Header */}
-      <div className="flex items-center px-4 h-14 border-b bg-white dark:bg-gray-800">
-        <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+      <div className="flex items-center justify-between px-4 h-11 border-b bg-white dark:bg-gray-800">
+        <h1 className="text-base font-normal text-gray-900 dark:text-gray-100">
           Chat with Claude
         </h1>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 bg-white dark:bg-gray-900">
+      <div className="flex-1 overflow-y-auto px-6 py-4">
         {messages.length === 0 && !streamingContent && (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            Start a conversation by typing a message below
+          <div className="flex items-center justify-center h-full">
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <MessageSquare />
+                </EmptyMedia>
+                <EmptyTitle>No Messages Yet</EmptyTitle>
+                <EmptyDescription>
+                  Start a conversation by typing a message below
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           </div>
         )}
 
@@ -190,14 +180,9 @@ function Chat() {
         ))}
 
         {isStreaming && !streamingContent && (
-          <div className="flex justify-start mb-4">
-            <div className="max-w-[80%] rounded-lg px-4 py-2 bg-gray-200 text-gray-900">
-              <div className="flex items-center gap-2">
-                <div className="animate-pulse">●</div>
-                <div className="animate-pulse animation-delay-200">●</div>
-                <div className="animate-pulse animation-delay-400">●</div>
-              </div>
-            </div>
+          <div className="flex items-center gap-2 mb-4 text-gray-500 dark:text-gray-400">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Agent is working...</span>
           </div>
         )}
 
