@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useDebounceCallback } from 'use-debounce';
+import { useDebouncedCallback } from 'use-debounce';
 import { useDocument } from '../hooks/useDocument';
 import { useUpdateDocument } from '../hooks/useUpdateDocument';
 
@@ -47,7 +47,7 @@ export function DocumentPanel({ documentId }: DocumentPanelProps) {
   };
 
   // Debounce auto-save to prevent excessive database writes
-  const debouncedSave = useDebounceCallback(handleSave, 1000);
+  const debouncedSave = useDebouncedCallback(handleSave, 1000);
 
   if (isLoading) {
     return (
