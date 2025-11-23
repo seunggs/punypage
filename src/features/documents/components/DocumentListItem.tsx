@@ -16,8 +16,8 @@ export function DocumentListItem({ document }: DocumentListItemProps) {
           params={{ documentId: document.id }}
           className="flex items-center gap-2"
         >
-          <FileText className="h-4 w-4 text-gray-500" />
-          <span className="truncate text-gray-800 dark:text-gray-200">{document.title}</span>
+          <FileText className="h-4 w-4 text-gray-400" strokeWidth={1.8} />
+          <span className="truncate text-gray-700 dark:text-gray-200">{document.title}</span>
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>
