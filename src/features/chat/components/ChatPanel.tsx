@@ -7,7 +7,7 @@ import { useSaveChatMessage } from '../hooks/useChatMessages';
 import { useLoadMessages } from '../hooks/useLoadMessages';
 import type { ChatSession } from '../types';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, Loader2 } from 'lucide-react';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -158,7 +158,7 @@ export function ChatPanel({ session }: ChatPanelProps) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 && !streamingContent && (
           <div className="flex items-center justify-center h-full">
             <Empty>
@@ -181,12 +181,9 @@ export function ChatPanel({ session }: ChatPanelProps) {
 
         {isStreaming && !streamingContent && (
           <div className="flex justify-start mb-4">
-            <div className="max-w-[80%] rounded-lg px-4 py-2 bg-gray-200 text-gray-900">
-              <div className="flex items-center gap-2">
-                <div className="animate-pulse">●</div>
-                <div className="animate-pulse animation-delay-200">●</div>
-                <div className="animate-pulse animation-delay-400">●</div>
-              </div>
+            <div className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-400">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm">Agent is working...</span>
             </div>
           </div>
         )}
