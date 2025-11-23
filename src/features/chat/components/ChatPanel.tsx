@@ -158,7 +158,7 @@ export function ChatPanel({ session }: ChatPanelProps) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-6 py-4">
         {messages.length === 0 && !streamingContent && (
           <div className="flex items-center justify-center h-full">
             <Empty>
