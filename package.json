@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -n \"frontend,backend\" -c \"cyan,magenta\" \"bun run dev:frontend\" \"bun run dev:server\"",
-    "dev:frontend": "vite --port 3000",
-    "dev:server": "cd server && bun --watch src/index.ts",
+    "dev:frontend": "VITE_API_URL=$(bun scripts/get-port.ts backend-url) vite --port $(bun scripts/get-port.ts frontend)",
+    "dev:server": "PORT=$(bun scripts/get-port.ts backend) FRONTEND_URL=$(bun scripts/get-port.ts frontend-url) bun --watch server/src/index.ts",
     "build": "vite build && tsc",
     "build:server": "tsc -p server/tsconfig.json",
     "serve": "vite preview",
