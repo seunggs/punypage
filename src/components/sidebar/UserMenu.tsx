@@ -25,7 +25,7 @@ export function UserMenu() {
         variant="outline"
         size="sm"
         onClick={() => navigate({ to: '/sign-in' })}
-        className="w-full justify-start"
+        className="w-full justify-start h-auto px-2 py-1.5"
       >
         <User className="h-4 w-4" />
         <span>Sign In</span>
@@ -36,7 +36,7 @@ export function UserMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="w-full justify-start">
+        <Button variant="outline" size="sm" className="w-full justify-start h-auto px-2 py-1.5">
           <User className="h-4 w-4" />
           <span className="truncate">{user.email}</span>
         </Button>

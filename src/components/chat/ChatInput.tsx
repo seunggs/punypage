@@ -1,5 +1,7 @@
 import { useState, type KeyboardEvent } from 'react';
-import { Send } from 'lucide-react';
+import { ArrowUp } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 
 export interface ChatInputProps {
   onSend: (message: string) => void;
@@ -24,27 +26,24 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
   };
 
   return (
-    <div className="flex items-end gap-2 p-4 border-t bg-white dark:bg-gray-900">
-      <textarea
+    <div className="flex items-center gap-2 p-4 bg-white dark:bg-gray-900">
+      <Textarea
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Type a message..."
         disabled={disabled}
         rows={1}
-        className="flex-1 resize-none rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-        style={{
-          minHeight: '44px',
-          maxHeight: '200px',
-        }}
+        className="flex-1 resize-none !min-h-[36px] max-h-[200px] py-2"
       />
-      <button
+      <Button
         onClick={handleSend}
         disabled={disabled || !input.trim()}
-        className="flex items-center justify-center w-11 h-11 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="flex-shrink-0 w-9 h-9 bg-indigo-600 hover:bg-indigo-700"
+        size="icon"
       >
-        <Send size={20} />
-      </button>
+        <ArrowUp size={18} />
+      </Button>
     </div>
   );
 }

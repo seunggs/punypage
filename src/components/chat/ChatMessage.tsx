@@ -86,10 +86,10 @@ export const ChatMessage = memo(function ChatMessage({ role, content }: ChatMess
     >
       <div
         className={cn(
-          'max-w-[80%] rounded-lg px-4 py-2',
+          'max-w-[80%] rounded-lg',
           isUser
-            ? 'bg-blue-500 text-white'
-            : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'
+            ? 'bg-slate-100 text-gray-900 dark:bg-slate-800 dark:text-gray-100 px-4 py-2'
+            : 'text-gray-900 dark:text-gray-100'
         )}
       >
         {isUser ? (
