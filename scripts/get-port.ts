@@ -28,13 +28,13 @@ const worktreeId = getWorktreeId();
 
 switch (type) {
   case 'frontend':
-    console.log(6000 + worktreeId);
+    console.log(5500 + worktreeId);
     break;
   case 'backend':
     console.log(4000 + worktreeId);
     break;
   case 'frontend-url':
-    console.log(`http://localhost:${6000 + worktreeId}`);
+    console.log(`http://localhost:${5500 + worktreeId}`);
     break;
   case 'backend-url':
     console.log(`http://localhost:${4000 + worktreeId}`);

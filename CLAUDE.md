@@ -26,7 +26,9 @@ Shared/central utilities (like `supabase.ts`) go in `src/lib/`.
 
 **Routing**: Use TanStack Router with file-based routing (not dot notation).
 
-**UI Components**: Prefer shadcn/ui components.
+**UI Components**: Use shadcn/ui components.
+- NEVER install `@radix-ui/*` packages directly
+- ALWAYS use `bunx --bun shadcn@latest add <component>` instead
 
 **Styling**: Use Tailwind CSS.
 
