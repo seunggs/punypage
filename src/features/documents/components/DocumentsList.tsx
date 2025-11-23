@@ -11,9 +11,9 @@ export function DocumentsList() {
   const { data: documents, isLoading } = useDocuments();
 
   return (
-    <div>
-      <div className="flex items-center justify-between px-2 mb-1">
-        <h2 className="px-2 py-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+    <div className="p-2">
+      <div className="flex items-center justify-between px-2 py-1.5">
+        <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400">
           Documents
         </h2>
         <Button
@@ -27,7 +27,7 @@ export function DocumentsList() {
       </div>
 
       {isLoading ? (
-        <div className="px-2 py-4 text-sm text-gray-500">Loading...</div>
+        <div className="px-2 py-1.5 text-sm text-gray-500">Loading...</div>
       ) : documents && documents.length > 0 ? (
         <SidebarMenu>
           {documents.map((doc) => (
@@ -35,7 +35,7 @@ export function DocumentsList() {
           ))}
         </SidebarMenu>
       ) : (
-        <div className="px-2 py-4 text-sm text-gray-500">
+        <div className="px-2 py-1.5 text-sm text-gray-500">
           No documents yet. Click + to create one.
         </div>
       )}

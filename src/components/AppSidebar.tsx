@@ -14,16 +14,14 @@ import { UserMenu } from './sidebar/UserMenu';
 export function AppSidebar() {
   return (
     <Sidebar className="border-r border-gray-200 dark:border-gray-800">
-      <SidebarHeader className="border-b border-gray-200 dark:border-gray-800 px-4 h-6 flex items-center">
+      <SidebarHeader className="border-b border-gray-200 dark:border-gray-800 px-4 h-12 flex items-center">
         <Link to="/" className="flex items-center gap-2">
           <h1 className="text-lg font-semibold">Punypage</h1>
         </Link>
       </SidebarHeader>
 
       <SidebarContent className="gap-0">
-        <div className="p-4 pb-6">
-          <DocumentsList />
-        </div>
+        <DocumentsList />
 
         <Separator />
 
