@@ -64,7 +64,7 @@ export function DocumentPanel({ documentId }: DocumentPanelProps) {
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
+      <div className="flex items-center justify-between px-6 h-6 border-b">
         <input
           type="text"
           value={title}

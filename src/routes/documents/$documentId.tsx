@@ -35,7 +35,7 @@ function DocumentView() {
       </div>
 
       {/* DocumentPanel renders in right grid column */}
-      <div className="overflow-auto border-l">
+      <div className="overflow-auto border-l border-gray-200 dark:border-gray-800">
         <DocumentPanel documentId={documentId} />
       </div>
     </>

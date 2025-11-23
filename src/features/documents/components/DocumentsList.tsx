@@ -12,8 +12,8 @@ export function DocumentsList() {
 
   return (
     <div>
-      <div className="flex items-center justify-between px-2 mb-2">
-        <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+      <div className="flex items-center justify-between px-2 mb-1">
+        <h2 className="px-2 py-1 text-xs font-medium text-gray-500 dark:text-gray-400">
           Documents
         </h2>
         <Button
