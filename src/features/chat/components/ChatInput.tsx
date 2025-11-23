@@ -34,12 +34,12 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
         placeholder="Type a message..."
         disabled={disabled}
         rows={1}
-        className="flex-1 resize-none !min-h-[36px] max-h-[200px] py-2"
+        className="flex-1 resize-none h-6 max-h-[200px]"
       />
       <Button
         onClick={handleSend}
         disabled={disabled || !input.trim()}
-        className="flex-shrink-0 w-9 h-9 bg-indigo-600 hover:bg-indigo-700"
+        className="flex-shrink-0 w-6 h-6 bg-lime-500 hover:bg-lime-600 rounded-xl"
         size="icon"
       >
         <ArrowUp size={18} />
