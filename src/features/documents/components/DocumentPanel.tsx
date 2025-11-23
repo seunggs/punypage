@@ -70,7 +70,7 @@ export function DocumentPanel({ documentId }: DocumentPanelProps) {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onBlur={handleSave}
-          className="text-xl font-semibold text-gray-900 dark:text-gray-100 bg-transparent border-none focus:outline-none focus:ring-0 flex-1"
+          className="text-base font-normal text-gray-900 dark:text-gray-100 bg-transparent border-none focus:outline-none focus:ring-0 flex-1"
           placeholder="Document Title"
         />
         <div className="text-xs text-gray-500">{document.path}</div>
