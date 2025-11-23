@@ -10,7 +10,12 @@ const getWorktreeId = (): number => {
 
   const match = dirName.match(/^punypage-(\d+)$/);
   if (match) {
-    return parseInt(match[1], 10);
+    const id = parseInt(match[1], 10);
+    if (isNaN(id) || id < 0) {
+      console.error(`Error: Invalid worktree ID: ${match[1]}`);
+      process.exit(1);
+    }
+    return id;
   }
 
   console.error(`Error: Invalid worktree directory name: ${dirName}`);

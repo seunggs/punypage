@@ -20,14 +20,14 @@ async function start() {
   try {
     // Register CORS
     await server.register(cors, {
-      origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+      origin: process.env.FRONTEND_URL || 'http://localhost:6000',
       credentials: true,
     });
 
     // Register routes
     await server.register(healthRoutes, { prefix: '/api' });
 
-    const port = parseInt(process.env.PORT || '3002', 10);
+    const port = parseInt(process.env.PORT || '4000', 10);
     const host = process.env.HOST || '0.0.0.0';
 
     await server.listen({ port, host });
