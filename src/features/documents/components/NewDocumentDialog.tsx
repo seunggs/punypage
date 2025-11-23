@@ -31,6 +31,13 @@ export function NewDocumentDialog({ open, onOpenChange }: NewDocumentDialogProps
       return;
     }
 
+    // Validate path format
+    if (!path.startsWith('/')) {
+      // TODO: Show error toast - path must start with /
+      console.error('Path must start with /');
+      return;
+    }
+
     createDocument.mutate(
       {
         title: title.trim(),

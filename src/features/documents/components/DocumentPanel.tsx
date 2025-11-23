@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useDebounceCallback } from 'use-debounce';
 import { useDocument } from '../hooks/useDocument';
 import { useUpdateDocument } from '../hooks/useUpdateDocument';
 
@@ -33,7 +34,7 @@ export function DocumentPanel({ documentId }: DocumentPanelProps) {
         id: documentId,
         updates: {
           title,
-          content,
+          content: content, // Store as string in JSONB
         },
       },
       {
@@ -44,6 +45,9 @@ export function DocumentPanel({ documentId }: DocumentPanelProps) {
       }
     );
   };
+
+  // Debounce auto-save to prevent excessive database writes
+  const debouncedSave = useDebounceCallback(handleSave, 1000);
 
   if (isLoading) {
     return (
@@ -68,8 +72,10 @@ export function DocumentPanel({ documentId }: DocumentPanelProps) {
         <input
           type="text"
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={handleSave}
+          onChange={(e) => {
+            setTitle(e.target.value);
+            debouncedSave();
+          }}
           className="text-base font-normal text-gray-900 dark:text-gray-100 bg-transparent border-none focus:outline-none focus:ring-0 flex-1"
           placeholder="Document Title"
         />
@@ -80,8 +86,10 @@ export function DocumentPanel({ documentId }: DocumentPanelProps) {
       <div className="flex-1 overflow-y-auto p-6">
         <textarea
           value={content}
-          onChange={(e) => setContent(e.target.value)}
-          onBlur={handleSave}
+          onChange={(e) => {
+            setContent(e.target.value);
+            debouncedSave();
+          }}
           className="w-full h-full resize-none border-none focus:outline-none focus:ring-0 text-gray-900 dark:text-gray-100 bg-transparent font-mono text-sm"
           placeholder="Start typing your document content..."
         />

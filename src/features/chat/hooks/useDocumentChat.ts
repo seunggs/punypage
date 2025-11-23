@@ -26,15 +26,20 @@ export function useDocumentChat(documentId: string) {
         return existingSession as ChatSession;
       }
 
-      // Otherwise create a new session
+      // Otherwise create a new session using upsert to handle race conditions
       const { data: { user } } = await supabase.auth.getUser();
 
       const { data: newSession, error: createError } = await supabase
         .from('chat_sessions')
-        .insert({
-          document_id: documentId,
-          user_id: user?.id || null,
-        })
+        .upsert(
+          {
+            document_id: documentId,
+            user_id: user?.id || null,
+          },
+          {
+            onConflict: 'document_id',
+          }
+        )
         .select()
         .single();
 
