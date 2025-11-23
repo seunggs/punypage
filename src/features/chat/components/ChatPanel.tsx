@@ -180,11 +180,9 @@ export function ChatPanel({ session }: ChatPanelProps) {
         ))}
 
         {isStreaming && !streamingContent && (
-          <div className="flex justify-start mb-4">
-            <div className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-400">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span className="text-sm">Agent is working...</span>
-            </div>
+          <div className="flex items-center gap-2 mb-4 text-gray-500 dark:text-gray-400">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Agent is working...</span>
           </div>
         )}
 
