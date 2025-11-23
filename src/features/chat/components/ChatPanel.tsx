@@ -6,7 +6,7 @@ import { useUpdateChatSession } from '../hooks/useChatSession';
 import { useSaveChatMessage } from '../hooks/useChatMessages';
 import { useLoadMessages } from '../hooks/useLoadMessages';
 import type { ChatSession } from '../types';
-import { Empty, EmptyDescription, EmptyHeader } from '@/components/ui/empty';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { MessageSquare } from 'lucide-react';
 
 interface Message {
@@ -163,6 +163,10 @@ export function ChatPanel({ session }: ChatPanelProps) {
           <div className="flex items-center justify-center h-full">
             <Empty>
               <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <MessageSquare />
+                </EmptyMedia>
+                <EmptyTitle>No Messages Yet</EmptyTitle>
                 <EmptyDescription>
                   Start a conversation by typing a message below
                 </EmptyDescription>
