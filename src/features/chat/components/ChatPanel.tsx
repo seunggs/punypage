@@ -151,7 +151,7 @@ export function ChatPanel({ session }: ChatPanelProps) {
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 h-12 border-b bg-white dark:bg-gray-800">
+      <div className="flex items-center justify-between px-6 h-11 border-b bg-white dark:bg-gray-800">
         <h1 className="text-base font-normal text-gray-900 dark:text-gray-100">
           Chat with Claude
         </h1>
