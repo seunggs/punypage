@@ -6,6 +6,8 @@ import { useUpdateChatSession } from '../hooks/useChatSession';
 import { useSaveChatMessage } from '../hooks/useChatMessages';
 import { useLoadMessages } from '../hooks/useLoadMessages';
 import type { ChatSession } from '../types';
+import { Empty, EmptyDescription, EmptyHeader } from '@/components/ui/empty';
+import { MessageSquare } from 'lucide-react';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -147,7 +149,7 @@ export function ChatPanel({ session }: ChatPanelProps) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900">
       {/* Header */}
       <div className="flex items-center justify-between px-6 h-12 border-b bg-white dark:bg-gray-800">
         <h1 className="text-base font-normal text-gray-900 dark:text-gray-100">
@@ -158,8 +160,14 @@ export function ChatPanel({ session }: ChatPanelProps) {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
         {messages.length === 0 && !streamingContent && (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            Start a conversation by typing a message below
+          <div className="flex items-center justify-center h-full">
+            <Empty>
+              <EmptyHeader>
+                <EmptyDescription>
+                  Start a conversation by typing a message below
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           </div>
         )}
 
