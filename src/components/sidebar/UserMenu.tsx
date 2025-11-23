@@ -1,8 +1,14 @@
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
-import { Button } from '@/components/ui/button';
 import { LogOut, User } from 'lucide-react';
 import { useNavigate } from '@tanstack/react-router';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export function UserMenu() {
   const { user } = useAuth();
@@ -15,32 +21,32 @@ export function UserMenu() {
 
   if (!user) {
     return (
-      <div className="p-4">
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={() => navigate({ to: '/sign-in' })}
-        >
-          Sign In
-        </Button>
-      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => navigate({ to: '/sign-in' })}
+        className="w-full justify-start h-auto px-2 py-1.5"
+      >
+        <User className="h-4 w-4" />
+        <span>Sign In</span>
+      </Button>
     );
   }
 
   return (
-    <div className="p-4 space-y-2">
-      <div className="flex items-center gap-2 px-2 py-1">
-        <User className="h-4 w-4 text-gray-500" />
-        <span className="text-sm truncate">{user.email}</span>
-      </div>
-      <Button
-        variant="ghost"
-        className="w-full justify-start"
-        onClick={handleSignOut}
-      >
-        <LogOut className="mr-2 h-4 w-4" />
-        Sign Out
-      </Button>
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="w-full justify-start h-auto px-2 py-1.5">
+          <User className="h-4 w-4" />
+          <span className="truncate">{user.email}</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" side="top" className="w-56">
+        <DropdownMenuItem onClick={handleSignOut}>
+          <LogOut className="mr-2 h-4 w-4" />
+          <span>Sign Out</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

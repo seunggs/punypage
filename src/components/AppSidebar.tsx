@@ -1,9 +1,7 @@
-import { Link } from '@tanstack/react-router';
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarHeader,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
@@ -14,27 +12,21 @@ import { UserMenu } from './sidebar/UserMenu';
 
 export function AppSidebar() {
   return (
-    <Sidebar>
-      <SidebarHeader className="border-b px-4 py-3">
-        <Link to="/" className="flex items-center gap-2">
-          <h1 className="text-lg font-semibold">Punypage</h1>
-        </Link>
-      </SidebarHeader>
-
-      <SidebarContent>
-        <div className="px-3 py-2">
+    <Sidebar className="border-r border-gray-200 dark:border-gray-800">
+      <SidebarContent className="gap-0">
+        <div className="p-4 pb-6">
           <NewChatButton />
         </div>
 
-        <div className="px-3 py-2">
-          <h2 className="mb-2 px-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <div className="p-2">
+          <h2 className="px-2 py-1 text-xs font-medium text-gray-500 dark:text-gray-400">
             Recent Chats
           </h2>
           <RecentChatsList />
         </div>
       </SidebarContent>
 
-      <SidebarFooter className="border-t">
+      <SidebarFooter className="border-t border-gray-200 dark:border-gray-800 p-4">
         <UserMenu />
       </SidebarFooter>
     </Sidebar>

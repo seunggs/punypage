@@ -1,12 +1,12 @@
 import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { MessageSquarePlus } from 'lucide-react';
 
 export function NewChatButton() {
   return (
-    <Link to="/chats/new">
-      <Button className="w-full" variant="default">
-        <Plus className="mr-2 h-4 w-4" />
+    <Link to="/chats/new" className="block w-full">
+      <Button className="w-full bg-black text-white hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200">
+        <MessageSquarePlus className="h-4 w-4" />
         New Chat
       </Button>
     </Link>

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useCreateChatSession } from '@/features/chat/hooks/useChatSession';
 
 export const Route = createFileRoute('/chats/new')({
@@ -9,8 +9,13 @@ export const Route = createFileRoute('/chats/new')({
 function NewChat() {
   const navigate = useNavigate();
   const createSession = useCreateChatSession();
+  const hasCreated = useRef(false);
 
   useEffect(() => {
+    // Prevent double execution in React StrictMode
+    if (hasCreated.current) return;
+    hasCreated.current = true;
+
     const sessionId = crypto.randomUUID();
 
     createSession.mutate(
@@ -27,7 +32,7 @@ function NewChat() {
         },
       }
     );
-  }, []);
+  }, [navigate, createSession]);
 
   return (
     <div className="flex items-center justify-center h-screen">
