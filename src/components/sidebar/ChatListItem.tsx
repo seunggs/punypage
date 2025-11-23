@@ -17,12 +17,13 @@ export function ChatListItem({ session, isActive }: ChatListItemProps) {
       to="/chats/$sessionId"
       params={{ sessionId: session.id }}
       className={cn(
-        'flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors',
+        'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors',
+        'text-gray-700 dark:text-gray-300',
         'hover:bg-gray-100 dark:hover:bg-gray-800',
-        isActive && 'bg-gray-100 dark:bg-gray-800'
+        isActive && 'bg-gray-100 dark:bg-gray-800 font-medium'
       )}
     >
-      <MessageSquare className="h-4 w-4 flex-shrink-0 text-gray-500" />
+      <MessageSquare className="h-4 w-4 flex-shrink-0 text-gray-500 dark:text-gray-400" />
       <span className="truncate">{title}</span>
     </Link>
   );

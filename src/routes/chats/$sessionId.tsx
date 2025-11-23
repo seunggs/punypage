@@ -169,17 +169,16 @@ function Chat() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="flex flex-col h-screen">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-white dark:bg-gray-800">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+      <div className="flex items-center px-4 h-14 border-b bg-white dark:bg-gray-800">
+        <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
           Chat with Claude
         </h1>
-        <div className="text-xs text-gray-500">Session: {sessionId.slice(0, 8)}</div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4 bg-white dark:bg-gray-900">
         {messages.length === 0 && !streamingContent && (
           <div className="flex items-center justify-center h-full text-gray-500">
             Start a conversation by typing a message below
