@@ -14,7 +14,7 @@ export const ChatMessage = memo(function ChatMessage({ role, content }: ChatMess
   const isUser = role === 'user';
 
   const components = {
-    code({ node, inline, className, children, ...props }) {
+    code({ node, inline, className, children, ...props }: any) {
       const match = /language-(\w+)/.exec(className || '');
       return !inline && match ? (
         <SyntaxHighlighter
@@ -32,7 +32,7 @@ export const ChatMessage = memo(function ChatMessage({ role, content }: ChatMess
         </code>
       );
     },
-    a({ node, children, href, ...props }) {
+    a({ node, children, href, ...props }: any) {
       return (
         <a
           href={href}
@@ -45,34 +45,34 @@ export const ChatMessage = memo(function ChatMessage({ role, content }: ChatMess
         </a>
       );
     },
-    p({ node, children, ...props }) {
+    p({ node, children, ...props }: any) {
       return <p className="mb-3 last:mb-0" {...props}>{children}</p>;
     },
-    ul({ node, children, ...props }) {
+    ul({ node, children, ...props }: any) {
       return <ul className="list-disc list-inside mb-3 space-y-1" {...props}>{children}</ul>;
     },
-    ol({ node, children, ...props }) {
+    ol({ node, children, ...props }: any) {
       return <ol className="list-decimal list-inside mb-3 space-y-1" {...props}>{children}</ol>;
     },
-    li({ node, children, ...props }) {
+    li({ node, children, ...props }: any) {
       return <li className="leading-relaxed" {...props}>{children}</li>;
     },
-    blockquote({ node, children, ...props }) {
+    blockquote({ node, children, ...props }: any) {
       return <blockquote className="border-l-4 border-gray-400 pl-4 italic my-3 text-gray-700 dark:text-gray-300" {...props}>{children}</blockquote>;
     },
-    h1({ node, children, ...props }) {
+    h1({ node, children, ...props }: any) {
       return <h1 className="text-2xl font-bold mb-3 mt-4 first:mt-0" {...props}>{children}</h1>;
     },
-    h2({ node, children, ...props }) {
+    h2({ node, children, ...props }: any) {
       return <h2 className="text-xl font-bold mb-2 mt-3 first:mt-0" {...props}>{children}</h2>;
     },
-    h3({ node, children, ...props }) {
+    h3({ node, children, ...props }: any) {
       return <h3 className="text-lg font-semibold mb-2 mt-2 first:mt-0" {...props}>{children}</h3>;
     },
-    strong({ node, children, ...props }) {
+    strong({ node, children, ...props }: any) {
       return <strong className="font-bold" {...props}>{children}</strong>;
     },
-    em({ node, children, ...props }) {
+    em({ node, children, ...props }: any) {
       return <em className="italic" {...props}>{children}</em>;
     },
   };
