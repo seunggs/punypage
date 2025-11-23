@@ -16,6 +16,7 @@ import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChatsIndexRouteImport } from './routes/chats/index'
+import { Route as DocumentsDocumentIdRouteImport } from './routes/documents/$documentId'
 import { Route as ChatsNewRouteImport } from './routes/chats/new'
 import { Route as ChatsSessionIdRouteImport } from './routes/chats/$sessionId'
 
@@ -54,6 +55,11 @@ const ChatsIndexRoute = ChatsIndexRouteImport.update({
   path: '/chats/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DocumentsDocumentIdRoute = DocumentsDocumentIdRouteImport.update({
+  id: '/documents/$documentId',
+  path: '/documents/$documentId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ChatsNewRoute = ChatsNewRouteImport.update({
   id: '/chats/new',
   path: '/chats/new',
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/update-password': typeof UpdatePasswordRoute
   '/chats/$sessionId': typeof ChatsSessionIdRoute
   '/chats/new': typeof ChatsNewRoute
+  '/documents/$documentId': typeof DocumentsDocumentIdRoute
   '/chats': typeof ChatsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/update-password': typeof UpdatePasswordRoute
   '/chats/$sessionId': typeof ChatsSessionIdRoute
   '/chats/new': typeof ChatsNewRoute
+  '/documents/$documentId': typeof DocumentsDocumentIdRoute
   '/chats': typeof ChatsIndexRoute
 }
 export interface FileRoutesById {
@@ -97,6 +105,7 @@ export interface FileRoutesById {
   '/update-password': typeof UpdatePasswordRoute
   '/chats/$sessionId': typeof ChatsSessionIdRoute
   '/chats/new': typeof ChatsNewRoute
+  '/documents/$documentId': typeof DocumentsDocumentIdRoute
   '/chats/': typeof ChatsIndexRoute
 }
 export interface FileRouteTypes {
@@ -110,6 +119,7 @@ export interface FileRouteTypes {
     | '/update-password'
     | '/chats/$sessionId'
     | '/chats/new'
+    | '/documents/$documentId'
     | '/chats'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -121,6 +131,7 @@ export interface FileRouteTypes {
     | '/update-password'
     | '/chats/$sessionId'
     | '/chats/new'
+    | '/documents/$documentId'
     | '/chats'
   id:
     | '__root__'
@@ -132,6 +143,7 @@ export interface FileRouteTypes {
     | '/update-password'
     | '/chats/$sessionId'
     | '/chats/new'
+    | '/documents/$documentId'
     | '/chats/'
   fileRoutesById: FileRoutesById
 }
@@ -144,6 +156,7 @@ export interface RootRouteChildren {
   UpdatePasswordRoute: typeof UpdatePasswordRoute
   ChatsSessionIdRoute: typeof ChatsSessionIdRoute
   ChatsNewRoute: typeof ChatsNewRoute
+  DocumentsDocumentIdRoute: typeof DocumentsDocumentIdRoute
   ChatsIndexRoute: typeof ChatsIndexRoute
 }
 
@@ -198,6 +211,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/documents/$documentId': {
+      id: '/documents/$documentId'
+      path: '/documents/$documentId'
+      fullPath: '/documents/$documentId'
+      preLoaderRoute: typeof DocumentsDocumentIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/chats/new': {
       id: '/chats/new'
       path: '/chats/new'
@@ -224,6 +244,7 @@ const rootRouteChildren: RootRouteChildren = {
   UpdatePasswordRoute: UpdatePasswordRoute,
   ChatsSessionIdRoute: ChatsSessionIdRoute,
   ChatsNewRoute: ChatsNewRoute,
+  DocumentsDocumentIdRoute: DocumentsDocumentIdRoute,
   ChatsIndexRoute: ChatsIndexRoute,
 }
 export const routeTree = rootRouteImport

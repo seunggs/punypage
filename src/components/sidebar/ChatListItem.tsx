@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { cn } from '@/lib/utils';
-import type { ChatSession } from '@/types/database.types';
+import type { ChatSession } from '@/features/chat/types';
 import { MessageSquare } from 'lucide-react';
 
 interface ChatListItemProps {

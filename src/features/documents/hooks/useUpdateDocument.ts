@@ -2,14 +2,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type { UpdateDocumentInput, Document } from '../types';
 
-export function useUpdateDocument(id: string) {
+export function useUpdateDocument() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: UpdateDocumentInput) => {
+    mutationFn: async ({ id, updates }: { id: string; updates: UpdateDocumentInput }) => {
       const { data, error } = await supabase
         .from('documents')
-        .update(input)
+        .update(updates)
         .eq('id', id)
         .select()
         .single();
@@ -17,9 +17,9 @@ export function useUpdateDocument(id: string) {
       if (error) throw error;
       return data as Document;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
-      queryClient.invalidateQueries({ queryKey: ['documents', id] });
+      queryClient.invalidateQueries({ queryKey: ['documents', data.id] });
     },
   });
 }

@@ -25,7 +25,7 @@ export async function sendMessage(
 
   // Start the fetch in the background
   (async () => {
-    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null | undefined = null;
 
     try {
       // Build query parameters - idiomatic SSE uses GET

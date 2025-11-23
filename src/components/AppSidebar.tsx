@@ -4,10 +4,9 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
 } from '@/components/ui/sidebar';
+import { Separator } from '@/components/ui/separator';
+import { DocumentsList } from '@/features/documents/components/DocumentsList';
 import { NewChatButton } from './sidebar/NewChatButton';
 import { RecentChatsList } from './sidebar/RecentChatsList';
 import { UserMenu } from './sidebar/UserMenu';
@@ -22,6 +21,12 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
+        <div className="px-3 py-2">
+          <DocumentsList />
+        </div>
+
+        <Separator className="my-2" />
+
         <div className="px-3 py-2">
           <NewChatButton />
         </div>
