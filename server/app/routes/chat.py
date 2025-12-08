@@ -3,15 +3,65 @@ from fastapi.responses import StreamingResponse
 from typing import Optional
 import logging
 import re
+import uuid
+from pydantic import BaseModel
 
 from app.agents.chat_agent import create_chat_stream
 from app.utils.sse import format_sse_event
+from app.core.active_clients import active_clients
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Session ID validation pattern (UUID format)
 SESSION_ID_PATTERN = re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
+
+
+class InterruptRequest(BaseModel):
+    """Request body for interrupt endpoint"""
+    request_id: str
+
+
+@router.post("/chat/interrupt")
+async def interrupt_chat(body: InterruptRequest):
+    """
+    Interrupt an active chat stream
+
+    Request body:
+        - request_id: UUID of the active chat request
+
+    Returns:
+        - success: true if interrupted
+        - error: if request not found or interrupt failed
+    """
+    request_id = body.request_id
+    logger.info(f"Interrupt request for: {request_id}")
+
+    # Get active client
+    client = await active_clients.get_client(request_id)
+
+    if not client:
+        raise HTTPException(
+            status_code=404,
+            detail="Chat request not found or already completed"
+        )
+
+    try:
+        # Call SDK interrupt
+        await client.interrupt()
+        logger.info(f"Successfully interrupted: {request_id}")
+
+        # Clean up
+        await active_clients.remove_client(request_id)
+
+        return {"success": True}
+
+    except Exception as e:
+        logger.error(f"Failed to interrupt {request_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to interrupt: {str(e)}"
+        )
 
 
 @router.get("/chat/stream")
@@ -41,15 +91,23 @@ async def chat_stream(
             detail="Invalid session_id format. Must be a valid UUID."
         )
 
+    # Generate unique request ID for this chat request
+    request_id = str(uuid.uuid4())
+
     async def event_generator():
         """Generate SSE events from chat stream"""
         final_session_id = None
-        logger.info(f"Event generator started - message: {message[:50]}, session_id: {session_id}")
+        logger.info(f"Event generator started - request_id: {request_id}, message: {message[:50]}, session_id: {session_id}")
 
         try:
-            # Create chat stream
+            # Send request ID immediately for interrupt capability
+            yield format_sse_event('requestId', {
+                'requestId': request_id
+            })
+
+            # Create chat stream with request_id
             logger.info("Creating chat stream...")
-            stream = create_chat_stream(message, session_id)
+            stream = create_chat_stream(message, session_id, request_id)
 
             # Process messages from agent
             msg_count = 0

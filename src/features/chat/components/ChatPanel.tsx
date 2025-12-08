@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
-import { sendMessage } from '@/lib/api/chat';
+import { sendMessage, interruptChat } from '@/lib/api/chat';
 import { useUpdateChatSession } from '../hooks/useChatSession';
 import { useSaveChatMessage } from '../hooks/useChatMessages';
 import { useLoadMessages } from '../hooks/useLoadMessages';
@@ -22,7 +22,11 @@ export function ChatPanel({ session }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
+  const [currentRequestId, setCurrentRequestId] = useState<string | null>(null);
+  const [isInterrupting, setIsInterrupting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortFnRef = useRef<(() => void) | null>(null);
+  const isIntentionalInterruptRef = useRef<boolean>(false);
 
   const { data: loadedMessages, isLoading: messagesLoading } = useLoadMessages(session.id);
   const updateSession = useUpdateChatSession();
@@ -48,7 +52,80 @@ export function ChatPanel({ session }: ChatPanelProps) {
     scrollToBottom();
   }, [messages, streamingContent]);
 
+  const handleInterrupt = async () => {
+    // Capture requestId immediately to avoid race condition
+    const requestId = currentRequestId;
+    if (!requestId) return;
+
+    setIsInterrupting(true);
+    isIntentionalInterruptRef.current = true;
+
+    try {
+      // Call backend interrupt
+      await interruptChat(requestId);
+
+      // Abort SSE stream
+      abortFnRef.current?.();
+
+      // Save partial response if any content was streamed
+      if (streamingContent) {
+        // Add both assistant message and interrupted marker in single update
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: streamingContent },
+          { role: 'user', content: 'Interrupted' },
+        ]);
+
+        // Save assistant message to Supabase
+        saveMessage.mutate(
+          {
+            session_id: session.id,
+            role: 'assistant',
+            content: streamingContent,
+          },
+          {
+            onError: (error) => {
+              console.error('Failed to save interrupted message:', error);
+            },
+          }
+        );
+      } else {
+        // No content streamed yet, just add interrupted message
+        setMessages((prev) => [
+          ...prev,
+          { role: 'user', content: 'Interrupted' },
+        ]);
+      }
+
+      // Save interrupted message to Supabase
+      saveMessage.mutate(
+        {
+          session_id: session.id,
+          role: 'user',
+          content: 'Interrupted',
+        },
+        {
+          onError: (error) => {
+            console.error('Failed to save interrupted marker:', error);
+          },
+        }
+      );
+    } catch (error) {
+      console.error('Interrupt failed:', error);
+    } finally {
+      setIsStreaming(false);
+      setIsInterrupting(false);
+      setStreamingContent('');
+      setCurrentRequestId(null);
+      abortFnRef.current = null;
+      // Don't reset isIntentionalInterruptRef here - let onError callback handle it
+    }
+  };
+
   const handleSendMessage = async (message: string) => {
+    // Reset interrupt flag for new message
+    isIntentionalInterruptRef.current = false;
+
     // Add user message to state
     const userMessage: Message = {
       role: 'user',
@@ -79,7 +156,10 @@ export function ChatPanel({ session }: ChatPanelProps) {
     const sdkSessionId = session.sdk_session_id || undefined;
 
     // Start streaming
-    await sendMessage(message, sdkSessionId, {
+    const abortFn = await sendMessage(message, sdkSessionId, {
+      onRequestId: (requestId) => {
+        setCurrentRequestId(requestId);
+      },
       onMessage: (msg) => {
         accumulatedContent += msg.content;
         setStreamingContent(accumulatedContent);
@@ -124,8 +204,17 @@ export function ChatPanel({ session }: ChatPanelProps) {
 
         setStreamingContent('');
         setIsStreaming(false);
+        setCurrentRequestId(null);
+        abortFnRef.current = null;
+        isIntentionalInterruptRef.current = false;
       },
       onError: (error) => {
+        // Skip showing error if this was an intentional interrupt
+        if (isIntentionalInterruptRef.current) {
+          isIntentionalInterruptRef.current = false;
+          return;
+        }
+
         console.error('Error:', error);
         setMessages((prev) => [
           ...prev,
@@ -136,8 +225,12 @@ export function ChatPanel({ session }: ChatPanelProps) {
         ]);
         setStreamingContent('');
         setIsStreaming(false);
+        setCurrentRequestId(null);
+        abortFnRef.current = null;
       },
     });
+
+    abortFnRef.current = abortFn;
   };
 
   if (messagesLoading) {
@@ -194,7 +287,12 @@ export function ChatPanel({ session }: ChatPanelProps) {
       </div>
 
       {/* Input */}
-      <ChatInput onSend={handleSendMessage} disabled={isStreaming} />
+      <ChatInput
+        onSend={handleSendMessage}
+        isStreaming={isStreaming}
+        isInterrupting={isInterrupting}
+        onInterrupt={handleInterrupt}
+      />
     </div>
   );
 }
