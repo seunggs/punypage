@@ -1,18 +1,33 @@
-import { useState, type KeyboardEvent } from 'react';
-import { ArrowUp } from 'lucide-react';
+import { useState, useEffect, type KeyboardEvent } from 'react';
+import { ArrowUp, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 
 export interface ChatInputProps {
   onSend: (message: string) => void;
-  disabled?: boolean;
+  isStreaming: boolean;
+  onInterrupt: () => void;
 }
 
-export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
+export function ChatInput({ onSend, isStreaming, onInterrupt }: ChatInputProps) {
   const [input, setInput] = useState('');
 
-  const handleSend = () => {
-    if (input.trim() && !disabled) {
+  // ESC key handler for interrupting
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isStreaming) {
+        onInterrupt();
+      }
+    };
+
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isStreaming, onInterrupt]);
+
+  const handleButtonClick = () => {
+    if (isStreaming) {
+      onInterrupt();
+    } else if (input.trim()) {
       onSend(input.trim());
       setInput('');
     }
@@ -21,7 +36,10 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      if (!isStreaming && input.trim()) {
+        onSend(input.trim());
+        setInput('');
+      }
     }
   };
 
@@ -32,17 +50,21 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Type a message..."
-        disabled={disabled}
+        disabled={isStreaming}
         rows={1}
         className="flex-1 resize-none min-h-10 max-h-[200px] py-2"
       />
       <Button
-        onClick={handleSend}
-        disabled={disabled || !input.trim()}
-        className="flex-shrink-0 w-10 h-10 bg-lime-500 hover:bg-lime-600 rounded-lg"
+        onClick={handleButtonClick}
+        disabled={!isStreaming && !input.trim()}
+        className={
+          isStreaming
+            ? "flex-shrink-0 w-10 h-10 bg-red-500 hover:bg-red-600 rounded-lg"
+            : "flex-shrink-0 w-10 h-10 bg-lime-500 hover:bg-lime-600 rounded-lg"
+        }
         size="icon"
       >
-        <ArrowUp size={18} />
+        {isStreaming ? <Square size={18} /> : <ArrowUp size={18} />}
       </Button>
     </div>
   );

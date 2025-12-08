@@ -2,6 +2,8 @@ from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessa
 from typing import AsyncIterator, Optional
 import logging
 
+from app.core.active_clients import active_clients
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +47,8 @@ class ChatStreamMessage:
 
 async def create_chat_stream(
     message: str,
-    session_id: Optional[str] = None
+    session_id: Optional[str] = None,
+    request_id: Optional[str] = None
 ) -> AsyncIterator[ChatStreamMessage]:
     """
     Create streaming chat using ClaudeSDKClient (per-request pattern)
@@ -53,6 +56,7 @@ async def create_chat_stream(
     Args:
         message: User message to send
         session_id: Optional session ID to resume conversation
+        request_id: Optional request ID for interrupt support
 
     Yields:
         ChatStreamMessage: Wrapped SDK messages
@@ -64,11 +68,15 @@ async def create_chat_stream(
     )
 
     try:
-        logger.info(f"Starting chat stream - session_id: {session_id or 'new'}, message: {message[:100]}")
+        logger.info(f"Starting chat stream - request_id: {request_id}, session_id: {session_id or 'new'}, message: {message[:100]}")
 
         # Use async context manager for proper lifecycle
         async with ClaudeSDKClient(options=options) as client:
             logger.info("ClaudeSDKClient context manager entered")
+
+            # Store client for interrupt capability
+            if request_id:
+                await active_clients.store_client(request_id, client)
 
             # Send query - automatically creates or resumes session
             logger.info(f"Sending query to Claude - session_id: {session_id}")
@@ -88,4 +96,7 @@ async def create_chat_stream(
         logger.error(f"Chat stream error: {e}", exc_info=True)
         raise
     finally:
+        # Clean up client from manager
+        if request_id:
+            await active_clients.remove_client(request_id)
         logger.info("Chat stream completed")

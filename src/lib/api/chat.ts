@@ -6,6 +6,7 @@ export interface ChatMessage {
 }
 
 export interface SendMessageCallbacks {
+  onRequestId: (requestId: string) => void;
   onMessage: (message: ChatMessage) => void;
   onDone: (data: { sdkSessionId?: string }) => void;
   onError: (error: string) => void;
@@ -20,8 +21,9 @@ export async function sendMessage(
   sdkSessionId: string | undefined,
   callbacks: SendMessageCallbacks
 ): Promise<() => void> {
-  const { onMessage, onDone, onError } = callbacks;
+  const { onRequestId, onMessage, onDone, onError } = callbacks;
   const abortController = new AbortController();
+  let isAborted = false;
 
   // Start the fetch in the background
   (async () => {
@@ -77,7 +79,9 @@ export async function sendMessage(
           const event = eventMatch[1];
           const data = JSON.parse(dataMatch[1]);
 
-          if (event === 'message') {
+          if (event === 'requestId') {
+            onRequestId(data.requestId);
+          } else if (event === 'message') {
             onMessage(data);
           } else if (event === 'done') {
             onDone({ sdkSessionId: data.sdkSessionId });
@@ -87,31 +91,59 @@ export async function sendMessage(
         }
       }
     } catch (error) {
-      // Only call onError if not aborted
-      if (error instanceof Error && error.name !== 'AbortError') {
+      // Skip error handling if aborted (intentional interruption)
+      if (error instanceof Error && error.name === 'AbortError') {
+        // Silently ignore abort errors
+        isAborted = true;
+        return;
+      }
+
+      // Only call onError for actual errors
+      if (error instanceof Error) {
         onError(error.message);
       } else if (error && typeof error === 'object') {
-        // Handle non-Error objects
+        // Check if it's an abort-related error
+        const errObj = error as any;
+        if (errObj.name === 'AbortError' || errObj.code === 20) {
+          return; // Silently ignore
+        }
         onError(JSON.stringify(error));
       } else if (error) {
-        // Handle primitives
         onError(String(error));
       }
     } finally {
-      // Clean up reader
-      if (reader) {
+      // Clean up reader (skip if already aborted to avoid errors)
+      if (reader && !isAborted) {
         try {
-          reader.cancel();
+          await reader.cancel();
         } catch (e) {
-          // Ignore cleanup errors
+          // Ignore cleanup errors (e.g., AbortError)
         }
       }
     }
-  })();
+  })().catch((err) => {
+    // Catch any unhandled promise rejections (e.g., AbortError)
+    // These are already handled in the try-catch above or are intentional aborts
+    if (err?.name !== 'AbortError') {
+      console.error('Unhandled error in sendMessage:', err);
+    }
+  });
 
   // Return abort function for cleanup
   return () => {
+    isAborted = true;
     abortController.abort();
   };
+}
+
+/**
+ * Interrupt an active chat stream
+ */
+export async function interruptChat(requestId: string): Promise<void> {
+  await fetch(`${API_URL}/api/chat/interrupt`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ request_id: requestId }),
+  });
 }
 
