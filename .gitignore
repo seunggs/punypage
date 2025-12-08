@@ -9,3 +9,16 @@ count.txt
 .nitro
 .tanstack
 .wrangler
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+.uv/
+*.egg-info/
+build/
+server/.env
