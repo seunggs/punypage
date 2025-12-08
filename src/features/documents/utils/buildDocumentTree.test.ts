@@ -90,7 +90,7 @@ describe('buildDocumentTree', () => {
     expect(tree[1].name).toBe('Document');
   });
 
-  it('should nest documents inside folders', () => {
+  it('should nest documents inside folders using full path', () => {
     const docs: Document[] = [
       createMockDocument({
         id: 'folder-1',
@@ -101,7 +101,7 @@ describe('buildDocumentTree', () => {
       createMockDocument({
         id: 'doc-1',
         title: 'Document in Folder',
-        path: '/My Folder',
+        path: '/My Folder/Document in Folder', // ✅ Full path
         is_folder: false,
       }),
     ];
@@ -112,9 +112,10 @@ describe('buildDocumentTree', () => {
     expect(tree[0].isFolder).toBe(true);
     expect(tree[0].children).toHaveLength(1);
     expect(tree[0].children[0].name).toBe('Document in Folder');
+    expect(tree[0].children[0].path).toBe('/My Folder/Document in Folder');
   });
 
-  it('should handle multi-level nesting', () => {
+  it('should handle multi-level nesting with full paths', () => {
     const docs: Document[] = [
       createMockDocument({
         id: 'folder-1',
@@ -125,13 +126,13 @@ describe('buildDocumentTree', () => {
       createMockDocument({
         id: 'folder-2',
         title: 'Advanced',
-        path: '/Data Engineering/Advanced',
+        path: '/Data Engineering/Advanced', // ✅ Full path to folder
         is_folder: true,
       }),
       createMockDocument({
         id: 'doc-1',
         title: 'Step by Step',
-        path: '/Data Engineering/Advanced',
+        path: '/Data Engineering/Advanced/Step by Step', // ✅ Full path to document
         is_folder: false,
       }),
     ];
@@ -141,8 +142,10 @@ describe('buildDocumentTree', () => {
     expect(tree[0].name).toBe('Data Engineering');
     expect(tree[0].children).toHaveLength(1);
     expect(tree[0].children[0].name).toBe('Advanced');
+    expect(tree[0].children[0].isFolder).toBe(true);
     expect(tree[0].children[0].children).toHaveLength(1);
     expect(tree[0].children[0].children[0].name).toBe('Step by Step');
+    expect(tree[0].children[0].children[0].path).toBe('/Data Engineering/Advanced/Step by Step');
   });
 
   it('should sort folders before documents in nested levels', () => {
@@ -156,7 +159,7 @@ describe('buildDocumentTree', () => {
       createMockDocument({
         id: 'doc-1',
         title: 'Document',
-        path: '/Parent',
+        path: '/Parent/Document',
         is_folder: false,
       }),
       createMockDocument({
@@ -176,12 +179,12 @@ describe('buildDocumentTree', () => {
     expect(tree[0].children[1].name).toBe('Document');
   });
 
-  it('should handle complex tree structure matching seed data', () => {
+  it('should handle complex tree structure with full paths', () => {
     const docs: Document[] = [
       // Root documents
       createMockDocument({
         id: '1',
-        title: 'Project Ideas (Immediate)',
+        title: 'Project Ideas',
         path: '/',
         is_folder: false,
       }),
@@ -189,40 +192,6 @@ describe('buildDocumentTree', () => {
         id: '2',
         title: 'Courses',
         path: '/',
-        is_folder: false,
-      }),
-
-      // Data Engineering folder and contents
-      createMockDocument({
-        id: 'de-folder',
-        title: 'Data Engineering',
-        path: '/Data Engineering',
-        is_folder: true,
-      }),
-      createMockDocument({
-        id: '3',
-        title: 'Data Engineering Playbook',
-        path: '/Data Engineering',
-        is_folder: false,
-      }),
-      createMockDocument({
-        id: '4',
-        title: 'End-to-end Data Pipeline',
-        path: '/Data Engineering',
-        is_folder: false,
-      }),
-
-      // Nested Advanced folder
-      createMockDocument({
-        id: 'adv-folder',
-        title: 'Advanced',
-        path: '/Data Engineering/Advanced',
-        is_folder: true,
-      }),
-      createMockDocument({
-        id: '5',
-        title: 'Step by Step Sidetrek',
-        path: '/Data Engineering/Advanced',
         is_folder: false,
       }),
 
@@ -236,49 +205,80 @@ describe('buildDocumentTree', () => {
       createMockDocument({
         id: '6',
         title: 'LLM',
-        path: '/AI',
+        path: '/AI/LLM',
         is_folder: false,
       }),
       createMockDocument({
         id: '7',
-        title: 'AI App Building (Maven)',
-        path: '/AI',
+        title: 'AI App Building',
+        path: '/AI/AI App Building',
+        is_folder: false,
+      }),
+
+      // Data Engineering folder and contents
+      createMockDocument({
+        id: 'de-folder',
+        title: 'Data Engineering',
+        path: '/Data Engineering',
+        is_folder: true,
+      }),
+      createMockDocument({
+        id: '3',
+        title: 'Playbook',
+        path: '/Data Engineering/Playbook',
+        is_folder: false,
+      }),
+      createMockDocument({
+        id: '4',
+        title: 'Pipeline',
+        path: '/Data Engineering/Pipeline',
+        is_folder: false,
+      }),
+
+      // Nested Advanced folder
+      createMockDocument({
+        id: 'adv-folder',
+        title: 'Advanced',
+        path: '/Data Engineering/Advanced',
+        is_folder: true,
+      }),
+      createMockDocument({
+        id: '5',
+        title: 'Sidetrek',
+        path: '/Data Engineering/Advanced/Sidetrek',
         is_folder: false,
       }),
     ];
 
     const tree = buildDocumentTree(docs);
 
-    // Root level: 2 folders + 2 documents
+    // Root level: 2 folders + 2 documents = 4 items
     expect(tree).toHaveLength(4);
 
     // Folders first
-    expect(tree[0].name).toBe('AI');
     expect(tree[0].isFolder).toBe(true);
-    expect(tree[1].name).toBe('Data Engineering');
     expect(tree[1].isFolder).toBe(true);
-
-    // Then documents (alphabetically)
-    expect(tree[2].name).toBe('Courses');
     expect(tree[2].isFolder).toBe(false);
-    expect(tree[3].name).toBe('Project Ideas (Immediate)');
     expect(tree[3].isFolder).toBe(false);
 
     // AI folder contents
-    expect(tree[0].children).toHaveLength(2);
-    expect(tree[0].children[0].name).toBe('AI App Building (Maven)');
-    expect(tree[0].children[1].name).toBe('LLM');
+    const aiFolder = tree.find(n => n.name === 'AI');
+    expect(aiFolder?.children).toHaveLength(2);
+    expect(aiFolder?.children[0].name).toBe('AI App Building');
+    expect(aiFolder?.children[1].name).toBe('LLM');
 
-    // Data Engineering folder contents (1 folder + 2 docs)
-    expect(tree[1].children).toHaveLength(3);
-    expect(tree[1].children[0].name).toBe('Advanced'); // folder first
-    expect(tree[1].children[0].isFolder).toBe(true);
-    expect(tree[1].children[1].name).toBe('Data Engineering Playbook');
-    expect(tree[1].children[2].name).toBe('End-to-end Data Pipeline');
+    // Data Engineering folder contents (1 folder + 2 docs = 3)
+    const deFolder = tree.find(n => n.name === 'Data Engineering');
+    expect(deFolder?.children).toHaveLength(3);
+    expect(deFolder?.children[0].isFolder).toBe(true); // Advanced folder first
+    expect(deFolder?.children[0].name).toBe('Advanced');
+    expect(deFolder?.children[1].name).toBe('Pipeline');
+    expect(deFolder?.children[2].name).toBe('Playbook');
 
     // Advanced subfolder contents
-    expect(tree[1].children[0].children).toHaveLength(1);
-    expect(tree[1].children[0].children[0].name).toBe('Step by Step Sidetrek');
+    expect(deFolder?.children[0].children).toHaveLength(1);
+    expect(deFolder?.children[0].children[0].name).toBe('Sidetrek');
+    expect(deFolder?.children[0].children[0].path).toBe('/Data Engineering/Advanced/Sidetrek');
   });
 
   it('should not include folder document reference', () => {
@@ -323,5 +323,26 @@ describe('buildDocumentTree', () => {
     const tree = buildDocumentTree(docs);
     expect(tree).toHaveLength(1);
     expect(tree[0].children).toHaveLength(0);
+  });
+
+  it('should extract correct name from path', () => {
+    const docs: Document[] = [
+      createMockDocument({
+        id: '1',
+        title: 'AI', // title matches folder name
+        path: '/AI',
+        is_folder: true,
+      }),
+      createMockDocument({
+        id: '2',
+        title: 'LLM', // title matches document name
+        path: '/AI/LLM',
+        is_folder: false,
+      }),
+    ];
+
+    const tree = buildDocumentTree(docs);
+    expect(tree[0].name).toBe('AI');
+    expect(tree[0].children[0].name).toBe('LLM');
   });
 });

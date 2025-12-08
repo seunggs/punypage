@@ -1,12 +1,10 @@
 -- Seed data for testing document directory tree
--- This file runs after migrations when you run: bunx supabase db reset
+-- This file runs automatically after migrations when you run: bunx supabase db reset
 
--- Note: Replace 'YOUR_USER_ID' with an actual user_id from auth.users
--- You can get this by running: SELECT id FROM auth.users LIMIT 1;
+-- IMPORTANT: Replace 'YOUR_USER_ID' with your actual user_id
+-- Get your user_id by running: SELECT id FROM auth.users WHERE email = 'your-email@example.com';
 
--- For now, we'll use a placeholder that you should replace with your actual user_id
--- Uncomment and update the INSERT statements below with your user_id
-
+-- Example seed data (commented out - uncomment and update YOUR_USER_ID to use)
 /*
 INSERT INTO documents (title, path, is_folder, content, user_id, status, metadata)
 VALUES
@@ -16,17 +14,17 @@ VALUES
 
   -- Data Engineering folder (level 1)
   ('Data Engineering', '/Data Engineering', true, '{"type": "doc", "content": []}', 'YOUR_USER_ID', 'draft', '{}'),
-  ('Data Engineering Playbook', '/Data Engineering', false, '{"type": "doc", "content": []}', 'YOUR_USER_ID', 'draft', '{}'),
-  ('End-to-end Data Pipeline', '/Data Engineering', false, '{"type": "doc", "content": []}', 'YOUR_USER_ID', 'draft', '{}'),
+  ('Data Engineering Playbook', '/Data Engineering/Data Engineering Playbook', false, '{"type": "doc", "content": []}', 'YOUR_USER_ID', 'draft', '{}'),
+  ('End-to-end Data Pipeline', '/Data Engineering/End-to-end Data Pipeline', false, '{"type": "doc", "content": []}', 'YOUR_USER_ID', 'draft', '{}'),
 
   -- Data Engineering/Advanced folder (level 2)
   ('Advanced', '/Data Engineering/Advanced', true, '{"type": "doc", "content": []}', 'YOUR_USER_ID', 'draft', '{}'),
-  ('Step by Step Sidetrek', '/Data Engineering/Advanced', false, '{"type": "doc", "content": []}', 'YOUR_USER_ID', 'draft', '{}'),
+  ('Step by Step Sidetrek', '/Data Engineering/Advanced/Step by Step Sidetrek', false, '{"type": "doc", "content": []}', 'YOUR_USER_ID', 'draft', '{}'),
 
   -- AI folder (level 1)
   ('AI', '/AI', true, '{"type": "doc", "content": []}', 'YOUR_USER_ID', 'draft', '{}'),
-  ('LLM', '/AI', false, '{"type": "doc", "content": []}', 'YOUR_USER_ID', 'draft', '{}'),
-  ('AI App Building (Maven)', '/AI', false, '{"type": "doc", "content": []}', 'YOUR_USER_ID', 'draft', '{}');
+  ('LLM', '/AI/LLM', false, '{"type": "doc", "content": []}', 'YOUR_USER_ID', 'draft', '{}'),
+  ('AI App Building (Maven)', '/AI/AI App Building (Maven)', false, '{"type": "doc", "content": []}', 'YOUR_USER_ID', 'draft', '{}');
 */
 
 -- To use this seed file:

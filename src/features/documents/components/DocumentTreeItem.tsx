@@ -8,14 +8,12 @@ interface DocumentTreeItemProps {
 }
 
 export function DocumentTreeItem({ node }: DocumentTreeItemProps) {
-  if (!node.document) return null;
-
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild>
         <Link
           to="/documents/$documentId"
-          params={{ documentId: node.document.id }}
+          params={{ documentId: node.id }}
           className="flex items-center gap-2"
         >
           <FileText className="h-4 w-4 text-gray-400" strokeWidth={1.8} />

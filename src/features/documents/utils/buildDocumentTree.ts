@@ -9,97 +9,108 @@ export interface TreeNode {
   children: TreeNode[];
 }
 
+/**
+ * Extracts the parent path from a full path
+ * Examples:
+ *   "/" -> null (root has no parent)
+ *   "/AI" -> "/"
+ *   "/AI/LLM" -> "/AI"
+ *   "/Data Engineering/Advanced/Topic" -> "/Data Engineering/Advanced"
+ */
+function getParentPath(path: string): string | null {
+  if (path === '/') return null;
+
+  const lastSlashIndex = path.lastIndexOf('/');
+  if (lastSlashIndex === 0) {
+    // Path like "/AI" -> parent is "/"
+    return '/';
+  }
+
+  // Path like "/AI/LLM" -> parent is "/AI"
+  return path.substring(0, lastSlashIndex);
+}
+
+/**
+ * Extracts the name from a full path
+ * Examples:
+ *   "/" -> "" (special case for root)
+ *   "/AI" -> "AI"
+ *   "/AI/LLM" -> "LLM"
+ *   "/Data Engineering/Advanced" -> "Advanced"
+ */
+function getNameFromPath(path: string, title: string): string {
+  if (path === '/') return title;
+
+  const lastSlashIndex = path.lastIndexOf('/');
+  return path.substring(lastSlashIndex + 1);
+}
+
 export function buildDocumentTree(documents: Document[]): TreeNode[] {
+  if (documents.length === 0) return [];
+
   const nodeMap = new Map<string, TreeNode>();
+  const pathToNodeMap = new Map<string, TreeNode>();
   const rootNodes: TreeNode[] = [];
 
-  // Sort documents: folders first, then alphabetically by title
-  const sortedDocs = [...documents].sort((a, b) => {
-    if (a.is_folder !== b.is_folder) {
-      return a.is_folder ? -1 : 1;
-    }
-    return a.title.localeCompare(b.title);
-  });
-
-  // First pass: create nodes for all documents
-  for (const doc of sortedDocs) {
+  // First pass: create all nodes
+  for (const doc of documents) {
     const node: TreeNode = {
       id: doc.id,
-      name: doc.title,
+      name: getNameFromPath(doc.path, doc.title),
       path: doc.path,
       isFolder: doc.is_folder,
       document: doc.is_folder ? undefined : doc,
       children: [],
     };
+
     nodeMap.set(doc.id, node);
+    pathToNodeMap.set(doc.path, node);
   }
 
   // Second pass: build hierarchy
-  for (const doc of sortedDocs) {
+  for (const doc of documents) {
     const node = nodeMap.get(doc.id)!;
+    const parentPath = getParentPath(doc.path);
 
-    if (doc.path === '/') {
-      // Root level document
+    if (parentPath === null || parentPath === '/') {
+      // Root level item (either path is "/" or parent is "/")
       rootNodes.push(node);
     } else {
-      // Find parent folder
-      const parentPath = doc.path;
-      const parentFolder = sortedDocs.find(
-        (d) => d.path === parentPath && d.is_folder
-      );
-
-      if (parentFolder) {
-        const parentNode = nodeMap.get(parentFolder.id);
-        if (parentNode && !doc.is_folder) {
-          // Only add if it's a document (not a folder)
-          parentNode.children.push(node);
-        }
-      }
-
-      // If this is a folder, find its parent
-      if (doc.is_folder) {
-        const pathParts = doc.path.split('/').filter(Boolean);
-        if (pathParts.length === 1) {
-          // Level 1 folder
-          rootNodes.push(node);
-        } else {
-          // Nested folder - find parent folder
-          const parentPathStr = '/' + pathParts.slice(0, -1).join('/');
-          const parentFolder = sortedDocs.find(
-            (d) => d.path === parentPathStr && d.is_folder
-          );
-          if (parentFolder) {
-            const parentNode = nodeMap.get(parentFolder.id);
-            if (parentNode) {
-              parentNode.children.push(node);
-            }
-          }
-        }
+      // Find parent by path (parent must be a folder, not root)
+      const parentNode = pathToNodeMap.get(parentPath);
+      if (parentNode && parentNode.isFolder) {
+        parentNode.children.push(node);
+      } else {
+        // Parent doesn't exist or isn't a folder - treat as root level
+        // This handles orphaned items gracefully
+        rootNodes.push(node);
       }
     }
   }
 
-  // Sort children recursively
-  const sortChildren = (nodes: TreeNode[]): TreeNode[] => {
+  // Sort function: folders first, then alphabetically
+  const sortNodes = (nodes: TreeNode[]): TreeNode[] => {
     return nodes.sort((a, b) => {
+      // Folders come first
       if (a.isFolder !== b.isFolder) {
         return a.isFolder ? -1 : 1;
       }
+      // Then sort alphabetically by name
       return a.name.localeCompare(b.name);
     });
   };
 
+  // Recursively sort all levels
   const sortTreeRecursively = (nodes: TreeNode[]): void => {
+    sortNodes(nodes);
     for (const node of nodes) {
       if (node.children.length > 0) {
-        node.children = sortChildren(node.children);
         sortTreeRecursively(node.children);
       }
     }
   };
 
-  const sortedRootNodes = sortChildren(rootNodes);
-  sortTreeRecursively(sortedRootNodes);
+  sortTreeRecursively(rootNodes);
 
-  return sortedRootNodes;
+  return rootNodes;
 }
