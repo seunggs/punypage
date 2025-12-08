@@ -9,7 +9,7 @@ from app.core.middleware import RequestLoggingMiddleware
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,  # Force DEBUG for troubleshooting
+    level=settings.log_level.upper(),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)

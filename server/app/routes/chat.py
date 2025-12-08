@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import Optional
 import logging
+import re
 
 from app.agents.chat_agent import create_chat_stream
 from app.utils.sse import format_sse_event
@@ -9,10 +10,13 @@ from app.utils.sse import format_sse_event
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# Session ID validation pattern (UUID format)
+SESSION_ID_PATTERN = re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
+
 
 @router.get("/chat/stream")
 async def chat_stream(
-    message: str = Query(..., description="User message", min_length=1, max_length=50000),
+    message: str = Query(..., description="User message", min_length=1, max_length=10000),
     session_id: Optional[str] = Query(None, description="Session ID to resume conversation"),
     # Uncomment when ready to add auth:
     # user: dict = RequireAuth
@@ -21,8 +25,8 @@ async def chat_stream(
     Stream chat responses via Server-Sent Events (SSE)
 
     Query Parameters:
-        - message: User message to send
-        - session_id: Optional session ID to resume previous conversation
+        - message: User message to send (max 10,000 characters)
+        - session_id: Optional UUID session ID to resume previous conversation
 
     Returns:
         SSE stream with events:
@@ -30,6 +34,12 @@ async def chat_stream(
         - 'done': Final event with session_id for client to persist
         - 'error': Error message if something goes wrong
     """
+    # Validate session_id format if provided
+    if session_id and not SESSION_ID_PATTERN.match(session_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid session_id format. Must be a valid UUID."
+        )
 
     async def event_generator():
         """Generate SSE events from chat stream"""
