@@ -6,28 +6,29 @@ import { Textarea } from '@/components/ui/textarea';
 export interface ChatInputProps {
   onSend: (message: string) => void;
   isStreaming: boolean;
+  isInterrupting: boolean;
   onInterrupt: () => void;
 }
 
-export function ChatInput({ onSend, isStreaming, onInterrupt }: ChatInputProps) {
+export function ChatInput({ onSend, isStreaming, isInterrupting, onInterrupt }: ChatInputProps) {
   const [input, setInput] = useState('');
 
   // ESC key handler for interrupting
   useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isStreaming) {
+    const handleEsc = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape' && isStreaming && !isInterrupting) {
         onInterrupt();
       }
     };
 
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [isStreaming, onInterrupt]);
+  }, [isStreaming, isInterrupting, onInterrupt]);
 
   const handleButtonClick = () => {
-    if (isStreaming) {
+    if (isStreaming && !isInterrupting) {
       onInterrupt();
-    } else if (input.trim()) {
+    } else if (!isStreaming && input.trim()) {
       onSend(input.trim());
       setInput('');
     }
@@ -56,7 +57,7 @@ export function ChatInput({ onSend, isStreaming, onInterrupt }: ChatInputProps) 
       />
       <Button
         onClick={handleButtonClick}
-        disabled={!isStreaming && !input.trim()}
+        disabled={isInterrupting || (!isStreaming && !input.trim())}
         className={
           isStreaming
             ? "flex-shrink-0 w-10 h-10 bg-red-500 hover:bg-red-600 rounded-lg"

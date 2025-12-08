@@ -53,14 +53,16 @@ export function ChatPanel({ session }: ChatPanelProps) {
   }, [messages, streamingContent]);
 
   const handleInterrupt = async () => {
-    if (!currentRequestId) return;
+    // Capture requestId immediately to avoid race condition
+    const requestId = currentRequestId;
+    if (!requestId) return;
 
     setIsInterrupting(true);
     isIntentionalInterruptRef.current = true;
 
     try {
       // Call backend interrupt
-      await interruptChat(currentRequestId);
+      await interruptChat(requestId);
 
       // Abort SSE stream
       abortFnRef.current?.();
@@ -285,7 +287,12 @@ export function ChatPanel({ session }: ChatPanelProps) {
       </div>
 
       {/* Input */}
-      <ChatInput onSend={handleSendMessage} isStreaming={isStreaming} onInterrupt={handleInterrupt} />
+      <ChatInput
+        onSend={handleSendMessage}
+        isStreaming={isStreaming}
+        isInterrupting={isInterrupting}
+        onInterrupt={handleInterrupt}
+      />
     </div>
   );
 }
