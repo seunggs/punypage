@@ -82,7 +82,16 @@ export function buildDocumentTree(documents: Document[]): TreeNode[] {
         parentNode.children.push(node);
       } else {
         // Parent doesn't exist or isn't a folder - treat as root level
-        // This handles orphaned items gracefully
+        // This handles orphaned items gracefully but may indicate data integrity issues
+        console.warn(
+          `Document "${doc.title}" (${doc.id}) has orphaned path "${doc.path}". ` +
+            `Parent path "${parentPath}" ${
+              parentNode
+                ? 'exists but is not a folder'
+                : 'does not exist'
+            }. ` +
+            'Document will be shown at root level.'
+        );
         rootNodes.push(node);
       }
     }

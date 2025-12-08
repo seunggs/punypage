@@ -1,4 +1,10 @@
 -- Add is_folder column to documents table for directory tree support
+--
+-- NOTE: This migration has a later timestamp than 20251123100837_link_chats_to_documents.sql
+-- which added the 'path' column. Both columns (path and is_folder) work together to
+-- support the hierarchical document tree structure. The path column stores the full path
+-- to the document (e.g., /AI/LLM), and is_folder indicates whether the document represents
+-- a folder (organizational) or an actual document.
 ALTER TABLE documents
   ADD COLUMN is_folder BOOLEAN NOT NULL DEFAULT false;
 
