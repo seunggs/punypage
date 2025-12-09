@@ -4,8 +4,9 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.config import settings
-from app.routes import health, chat
+from app.routes import health, chat, rag
 from app.core.middleware import RequestLoggingMiddleware
+from app.core.scheduler import get_scheduler
 
 # Configure logging
 logging.basicConfig(
@@ -21,7 +22,16 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting server on {settings.host}:{settings.port}")
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Frontend URL: {settings.frontend_url}")
+
+    # Start RAG ingestion scheduler
+    scheduler = get_scheduler(interval_seconds=300)  # 5 minutes
+    scheduler.start()
+    logger.info("RAG ingestion scheduler started")
+
     yield
+
+    # Stop scheduler on shutdown
+    await scheduler.stop()
     logger.info("Shutting down server")
 
 
@@ -48,3 +58,5 @@ app.add_middleware(RequestLoggingMiddleware)
 # Register routes
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
+app.include_router(rag.router, prefix="/api/v1/documents", tags=["documents"])
+
