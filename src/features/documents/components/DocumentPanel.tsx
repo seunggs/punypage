@@ -144,7 +144,7 @@ export function DocumentPanel({ documentId }: DocumentPanelProps) {
 
       {/* Content Editor */}
       <div className="flex-1 overflow-y-auto">
-        <Editor key={documentId} content={document.content as JSONContent} onUpdate={handleContentUpdate} />
+        <Editor key={documentId} content={document.content as string | JSONContent} onUpdate={handleContentUpdate} />
       </div>
 
       {/* Footer */}
