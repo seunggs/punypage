@@ -1,0 +1,24 @@
+[project]
+name = "punypage-server"
+version = "0.1.0"
+description = "FastAPI backend for Punypage application"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "python-dotenv>=1.0.0",
+    "claude-agent-sdk>=0.1.0",
+    "supabase>=2.10.0",
+    "python-jose[cryptography]>=3.3.0",
+    "openai>=1.0.0",
+    "tiktoken>=0.5.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "httpx>=0.28.0",
+]
