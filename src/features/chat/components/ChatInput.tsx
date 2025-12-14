@@ -53,7 +53,7 @@ export function ChatInput({ onSend, isStreaming, isInterrupting, onInterrupt }: 
         placeholder="Type a message..."
         disabled={isStreaming}
         rows={1}
-        className="flex-1 resize-none min-h-10 max-h-[200px] py-2"
+        className="flex-1 resize-none min-h-10 max-h-[200px] py-2 text-base md:text-base"
       />
       <Button
         onClick={handleButtonClick}
