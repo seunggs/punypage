@@ -68,6 +68,7 @@ async def interrupt_chat(body: InterruptRequest):
 async def chat_stream(
     message: str = Query(..., description="User message", min_length=1, max_length=10000),
     session_id: Optional[str] = Query(None, description="Session ID to resume conversation"),
+    user_id: Optional[str] = Query(None, description="User ID for document operations (temporary - will use auth)"),
     # Uncomment when ready to add auth:
     # user: dict = RequireAuth
 ):
@@ -77,10 +78,14 @@ async def chat_stream(
     Query Parameters:
         - message: User message to send (max 10,000 characters)
         - session_id: Optional UUID session ID to resume previous conversation
+        - user_id: Optional user ID for document operations (temporary)
 
     Returns:
         SSE stream with events:
+        - 'requestId': Request ID for interrupt capability
         - 'message': Partial text chunks as they arrive
+        - 'tool_use': Tool invocation events (for document operations)
+        - 'tool_result': Tool execution results (document created/updated/etc)
         - 'done': Final event with session_id for client to persist
         - 'error': Error message if something goes wrong
     """
@@ -105,9 +110,9 @@ async def chat_stream(
                 'requestId': request_id
             })
 
-            # Create chat stream with request_id
+            # Create chat stream with request_id and user_id
             logger.info("Creating chat stream...")
-            stream = create_chat_stream(message, session_id, request_id)
+            stream = create_chat_stream(message, session_id, request_id, user_id)
 
             # Process messages from agent
             msg_count = 0
@@ -125,6 +130,18 @@ async def chat_stream(
                     })
                 else:
                     logger.debug(f"Message #{msg_count} had no text delta")
+
+                # Handle tool use events (document operations)
+                tool_use = msg.get_tool_use()
+                if tool_use:
+                    logger.info(f"Sending tool_use via SSE - tool: {tool_use['tool_name']}")
+                    yield format_sse_event('tool_use', tool_use)
+
+                # Handle tool result events (document created/updated/etc)
+                tool_result = msg.get_tool_result()
+                if tool_result:
+                    logger.info(f"Sending tool_result via SSE - tool_use_id: {tool_result['tool_use_id']}")
+                    yield format_sse_event('tool_result', tool_result)
 
                 # Capture session ID from result
                 session = msg.get_session_id()

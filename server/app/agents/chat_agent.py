@@ -1,6 +1,10 @@
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, TextBlock
+from claude_agent_sdk.mcp import StdioServerParameters
 from typing import AsyncIterator, Optional
 import logging
+import os
+import sys
+from pathlib import Path
 
 from app.core.active_clients import active_clients
 
@@ -44,11 +48,45 @@ class ChatStreamMessage:
             logger.info(f"Found session_id: {session_id}")
         return session_id
 
+    def get_tool_use(self) -> Optional[dict]:
+        """Extract tool use event from StreamEvent"""
+        if hasattr(self.raw, 'event') and isinstance(self.raw.event, dict):
+            event_type = self.raw.event.get('type')
+            if event_type == 'content_block_start':
+                content_block = self.raw.event.get('content_block', {})
+                if content_block.get('type') == 'tool_use':
+                    tool_use = {
+                        'tool_use_id': content_block.get('id'),
+                        'tool_name': content_block.get('name'),
+                        'input': content_block.get('input', {})
+                    }
+                    logger.info(f"Extracted tool use: {tool_use['tool_name']}")
+                    return tool_use
+        return None
+
+    def get_tool_result(self) -> Optional[dict]:
+        """Extract tool result from message"""
+        # Tool results come as part of the message content
+        # The SDK handles tool execution internally, but we can observe results
+        # by checking for tool_result type content blocks
+        if hasattr(self.raw, 'content') and isinstance(self.raw.content, list):
+            for block in self.raw.content:
+                if hasattr(block, 'type') and block.type == 'tool_result':
+                    result = {
+                        'tool_use_id': getattr(block, 'tool_use_id', None),
+                        'content': getattr(block, 'content', None),
+                        'is_error': getattr(block, 'is_error', False)
+                    }
+                    logger.info(f"Extracted tool result for: {result['tool_use_id']}")
+                    return result
+        return None
+
 
 async def create_chat_stream(
     message: str,
     session_id: Optional[str] = None,
-    request_id: Optional[str] = None
+    request_id: Optional[str] = None,
+    user_id: Optional[str] = None
 ) -> AsyncIterator[ChatStreamMessage]:
     """
     Create streaming chat using ClaudeSDKClient (per-request pattern)
@@ -57,14 +95,36 @@ async def create_chat_stream(
         message: User message to send
         session_id: Optional session ID to resume conversation
         request_id: Optional request ID for interrupt support
+        user_id: Optional user ID for MCP server (for document operations)
 
     Yields:
         ChatStreamMessage: Wrapped SDK messages
     """
-    # Configure client options
+    # Get project root (server directory)
+    server_dir = Path(__file__).parent.parent.parent
+
+    # Prepare environment for MCP server subprocess
+    mcp_env = os.environ.copy()
+    mcp_env['PUNYPAGE_USER_ID'] = user_id or 'anonymous'
+
+    # Configure client options with MCP server
     options = ClaudeAgentOptions(
         permission_mode='bypassPermissions',
         include_partial_messages=True,  # Enable real-time streaming
+        mcp_servers={
+            "punypage_internal": StdioServerParameters(
+                command="uv",
+                args=[
+                    "run",
+                    "--directory",
+                    str(server_dir),
+                    "python",
+                    "-m",
+                    "mcp_servers.punypage_internal"
+                ],
+                env=mcp_env
+            )
+        }
     )
 
     try:

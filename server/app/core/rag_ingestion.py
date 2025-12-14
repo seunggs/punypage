@@ -9,7 +9,7 @@ from openai import OpenAI
 from supabase import Client, create_client
 
 from app.config import settings
-from app.utils.tiptap_parser import TiptapParser, Chunk
+from app.utils.markdown_parser import MarkdownParser, Chunk
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class RAGIngestionPipeline:
             settings.supabase_url,
             settings.supabase_service_role_key  # Use service role for backend operations
         )
-        self.parser = TiptapParser()
+        self.parser = MarkdownParser()
         self.embedding_model = settings.openai_embedding_model
 
     def get_documents_to_index(self) -> list[dict[str, Any]]:
@@ -188,14 +188,14 @@ class RAGIngestionPipeline:
         try:
             logger.info(f"Processing document: {document_title} ({document_id})")
 
-            # Parse Tiptap JSON
-            tiptap_json = document["content"]
-            if not tiptap_json or not isinstance(tiptap_json, dict):
+            # Parse markdown text
+            markdown_text = document["content"]
+            if not markdown_text or not isinstance(markdown_text, str):
                 logger.warning(f"Document {document_id} has invalid content format")
                 return False
 
             # Parse and chunk
-            chunks = self.parser.parse_and_chunk(tiptap_json, document_title)
+            chunks = self.parser.parse_and_chunk(markdown_text, document_title)
 
             if not chunks:
                 logger.warning(f"No chunks generated for document {document_id}")
