@@ -18,12 +18,18 @@ export function convertToMarkdown(
     return `<document_title>${title}</document_title>\n\n<document_content>\n\n</document_content>`;
   }
 
-  // Convert TipTap JSON to markdown using static renderer
-  const markdown = renderToMarkdown({
-    extensions: [StarterKit as any], // Use same extensions as editor
-    content,
-  });
+  try {
+    // Convert TipTap JSON to markdown using static renderer
+    const markdown = renderToMarkdown({
+      extensions: [StarterKit as any], // Use same extensions as editor
+      content,
+    });
 
-  // Wrap in document tags with title and content separated
-  return `<document_title>${title}</document_title>\n\n<document_content>\n${markdown}\n</document_content>`;
+    // Wrap in document tags with title and content separated
+    return `<document_title>${title}</document_title>\n\n<document_content>\n${markdown}\n</document_content>`;
+  } catch (error) {
+    console.error('Failed to convert document to markdown:', error);
+    // Return title only if conversion fails
+    return `<document_title>${title}</document_title>\n\n<document_content>\n[Error converting document content]\n</document_content>`;
+  }
 }

@@ -175,13 +175,15 @@ export function ChatPanel({ session }: ChatPanelProps) {
       }
     }
 
-    // 🔍 DEBUG: Log the actual message being sent to backend
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📤 MESSAGE SENT TO AGENT SDK:');
-    console.log(`📄 Document context included: ${documentIncluded}`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(messageToSend);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    // 🔍 DEBUG: Log the actual message being sent to backend (development only)
+    if (import.meta.env.DEV) {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📤 MESSAGE SENT TO AGENT SDK:');
+      console.log(`📄 Document context included: ${documentIncluded}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(messageToSend);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    }
 
     setIsStreaming(true);
     setStreamingContent('');
