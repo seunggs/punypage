@@ -3,7 +3,7 @@ RAG ingestion pipeline for processing documents into vector embeddings.
 Handles idempotent batch processing of documents.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from openai import OpenAI
 from supabase import Client, create_client
@@ -24,12 +24,8 @@ class RAGIngestionPipeline:
             settings.supabase_url,
             settings.supabase_service_role_key  # Use service role for backend operations
         )
-        self.parser = TiptapParser(
-            target_chunk_size=600,
-            min_chunk_size=100,
-            max_chunk_size=1000
-        )
-        self.embedding_model = "text-embedding-3-small"
+        self.parser = TiptapParser()
+        self.embedding_model = settings.openai_embedding_model
 
     def get_documents_to_index(self) -> list[dict[str, Any]]:
         """
@@ -51,7 +47,6 @@ class RAGIngestionPipeline:
                     documents.append(doc)
                 elif doc.get("updated_at") and doc.get("indexed_at"):
                     # Compare timestamps
-                    from datetime import datetime
                     updated = datetime.fromisoformat(doc["updated_at"].replace('Z', '+00:00'))
                     indexed = datetime.fromisoformat(doc["indexed_at"].replace('Z', '+00:00'))
                     if updated > indexed:
@@ -167,7 +162,7 @@ class RAGIngestionPipeline:
         """
         try:
             self.supabase.table("documents") \
-                .update({"indexed_at": datetime.utcnow().isoformat()}) \
+                .update({"indexed_at": datetime.now(timezone.utc).isoformat()}) \
                 .eq("id", document_id) \
                 .execute()
 

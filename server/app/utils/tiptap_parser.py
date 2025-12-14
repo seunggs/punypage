@@ -15,27 +15,20 @@ class Chunk(TypedDict):
 
 
 class TiptapParser:
-    """Parser for Tiptap JSON documents"""
+    """
+    Parser for Tiptap JSON documents.
 
-    def __init__(
-        self,
-        target_chunk_size: int = 600,
-        min_chunk_size: int = 100,
-        max_chunk_size: int = 1000,
-        encoding_name: str = "cl100k_base"  # OpenAI's encoding for text-embedding-3-small
-    ):
+    Uses paragraph-level chunking where each paragraph becomes a separate chunk
+    with heading context preserved for better semantic retrieval.
+    """
+
+    def __init__(self, encoding_name: str = "cl100k_base"):
         """
-        Initialize parser with chunking parameters.
+        Initialize parser.
 
         Args:
-            target_chunk_size: Target token count per chunk (default: 600)
-            min_chunk_size: Minimum tokens to create a chunk (default: 100)
-            max_chunk_size: Maximum tokens per chunk (default: 1000)
-            encoding_name: Tiktoken encoding to use for token counting
+            encoding_name: Tiktoken encoding to use for token counting (default: cl100k_base)
         """
-        self.target_chunk_size = target_chunk_size
-        self.min_chunk_size = min_chunk_size
-        self.max_chunk_size = max_chunk_size
         self.encoder = tiktoken.get_encoding(encoding_name)
 
     def count_tokens(self, text: str) -> int:

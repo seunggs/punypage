@@ -1,5 +1,6 @@
 -- Create function for vector similarity search
 -- This function performs cosine similarity search on document chunks
+-- Filters results to only include chunks from documents owned by the authenticated user
 CREATE OR REPLACE FUNCTION search_document_chunks(
   query_embedding vector(1536),
   match_threshold float DEFAULT 0.7,
@@ -14,6 +15,8 @@ RETURNS TABLE (
   similarity float
 )
 LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
   RETURN QUERY
@@ -25,7 +28,9 @@ BEGIN
     document_chunks.metadata,
     1 - (document_chunks.embedding <=> query_embedding) AS similarity
   FROM document_chunks
-  WHERE 1 - (document_chunks.embedding <=> query_embedding) > match_threshold
+  INNER JOIN documents ON documents.id = document_chunks.document_id
+  WHERE documents.user_id = auth.uid()
+    AND 1 - (document_chunks.embedding <=> query_embedding) > match_threshold
   ORDER BY document_chunks.embedding <=> query_embedding
   LIMIT match_count;
 END;

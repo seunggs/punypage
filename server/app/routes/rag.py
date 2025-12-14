@@ -6,23 +6,22 @@ Routes:
 - POST /api/v1/documents/ingest - Manual ingestion trigger
 - GET /api/v1/documents/health - RAG system health check
 """
+import asyncio
 import logging
 from typing import Any
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, Field
-from openai import OpenAI
 from supabase import Client, create_client
 
 from app.config import settings
-from app.core.dependencies import RequireAuth
+from app.core.dependencies import RequireAuth, get_user_supabase_client
 from app.core.rag_ingestion import get_pipeline
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Initialize clients
-openai_client = OpenAI(api_key=settings.openai_api_key)
-supabase: Client = create_client(
+# Service role client for admin operations (health checks, ingestion)
+service_supabase: Client = create_client(
     settings.supabase_url,
     settings.supabase_service_role_key
 )
@@ -68,31 +67,30 @@ class IngestionResponse(BaseModel):
 @router.post("/search", response_model=SearchResponse)
 async def search_documents(
     request: SearchRequest,
-    user: dict = RequireAuth
+    user: dict = RequireAuth,
+    user_supabase: Client = Depends(get_user_supabase_client)
 ) -> SearchResponse:
     """
     Search documents using vector similarity.
 
     Generates an embedding for the query and finds similar document chunks.
-    Results are filtered by user access (RLS policies apply).
+    Results are filtered by user access via RLS policies enforced by auth.uid().
     """
     try:
+        # Get OpenAI client from pipeline (shared instance)
+        pipeline = get_pipeline()
+        openai_client = pipeline.openai_client
+
         # Generate embedding for query
         logger.info(f"Generating embedding for query: {request.query[:50]}...")
         embedding_response = openai_client.embeddings.create(
-            model="text-embedding-3-small",
+            model=settings.openai_embedding_model,
             input=request.query
         )
         query_embedding = embedding_response.data[0].embedding
 
-        # Search for similar chunks using pgvector
-        # Note: Supabase Python client doesn't have native vector search,
-        # so we use RPC to call a custom function
-        # First, let's create a simpler approach using raw SQL via rpc
-
-        # For now, we'll use a workaround with manual SQL
-        # In production, you'd want to create a Postgres function for this
-        response = supabase.rpc(
+        # Search using user-scoped client (RLS enforced via auth.uid() in SQL function)
+        response = user_supabase.rpc(
             "search_document_chunks",
             {
                 "query_embedding": query_embedding,
@@ -124,7 +122,7 @@ async def search_documents(
 
     except Exception as e:
         logger.error(f"Error in vector search: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Search failed: {str(e)}")
 
 
 @router.post("/ingest", response_model=IngestionResponse)
@@ -138,7 +136,10 @@ async def trigger_ingestion(user: dict = RequireAuth) -> IngestionResponse:
     try:
         logger.info("Manual ingestion triggered")
         pipeline = get_pipeline()
-        stats = pipeline.run()
+
+        # Run blocking operation in executor to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        stats = await loop.run_in_executor(None, pipeline.run)
 
         return IngestionResponse(
             success=True,
@@ -148,10 +149,9 @@ async def trigger_ingestion(user: dict = RequireAuth) -> IngestionResponse:
 
     except Exception as e:
         logger.error(f"Error in manual ingestion: {e}", exc_info=True)
-        return IngestionResponse(
-            success=False,
-            message=f"Ingestion failed: {str(e)}",
-            stats={"processed": 0, "failed": 0, "skipped": 0}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ingestion failed: {str(e)}"
         )
 
 
@@ -159,14 +159,21 @@ async def trigger_ingestion(user: dict = RequireAuth) -> IngestionResponse:
 async def rag_health() -> dict[str, str]:
     """Health check endpoint for RAG system"""
     try:
+        # Get OpenAI client from pipeline
+        pipeline = get_pipeline()
+        openai_client = pipeline.openai_client
+
         # Test OpenAI connection
         openai_client.models.list()
 
         # Test Supabase connection
-        supabase.table("documents").select("id").limit(1).execute()
+        service_supabase.table("documents").select("id").limit(1).execute()
 
         return {"status": "healthy", "message": "RAG system operational"}
 
     except Exception as e:
         logger.error(f"RAG health check failed: {e}")
-        return {"status": "unhealthy", "message": str(e)}
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"status": "unhealthy", "message": str(e)}
+        )
