@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     # Anthropic
     anthropic_api_key: str
 
+    # OpenAI
+    openai_api_key: str
+    openai_embedding_model: str = "text-embedding-3-small"
+
     # Supabase
     supabase_url: str
     supabase_anon_key: str
