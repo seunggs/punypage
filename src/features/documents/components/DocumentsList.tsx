@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { SidebarMenu } from '@/components/ui/sidebar';
 import { useDocuments } from '../hooks/useDocuments';
-import { DocumentListItem } from './DocumentListItem';
+import { DocumentTree } from './DocumentTree';
 import { NewDocumentDialog } from './NewDocumentDialog';
 
 export function DocumentsList() {
@@ -29,11 +28,7 @@ export function DocumentsList() {
       {isLoading ? (
         <div className="px-2 py-1.5 text-sm text-gray-500">Loading...</div>
       ) : documents && documents.length > 0 ? (
-        <SidebarMenu>
-          {documents.map((doc) => (
-            <DocumentListItem key={doc.id} document={doc} />
-          ))}
-        </SidebarMenu>
+        <DocumentTree documents={documents} />
       ) : (
         <div className="px-2 py-1.5 text-sm text-gray-500">
           No documents yet. Click + to create one.
