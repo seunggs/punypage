@@ -11,6 +11,7 @@ export function useDocumentChat(documentId: string) {
   // Query to get existing chat session for document
   const query = useQuery({
     queryKey: ['document-chat', documentId],
+    enabled: !!documentId, // Only run if documentId is truthy
     queryFn: async () => {
       // Try to find existing session
       const { data: existingSession, error: fetchError } = await supabase

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import type { JSONContent } from '@tiptap/core';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { sendMessage, interruptChat } from '@/lib/api/chat';
@@ -8,6 +9,9 @@ import { useLoadMessages } from '../hooks/useLoadMessages';
 import type { ChatSession } from '../types';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { MessageSquare, Loader2 } from 'lucide-react';
+import { useDocument } from '@/features/documents/hooks/useDocument';
+import { convertToMarkdown } from '@/features/documents/utils/convertToMarkdown';
+import { hashDocument } from '@/features/documents/utils/hashDocument';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -25,10 +29,12 @@ export function ChatPanel({ session }: ChatPanelProps) {
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null);
   const [isInterrupting, setIsInterrupting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastDocumentHashRef = useRef<string | null>(null);
   const abortFnRef = useRef<(() => void) | null>(null);
   const isIntentionalInterruptRef = useRef<boolean>(false);
 
   const { data: loadedMessages, isLoading: messagesLoading } = useLoadMessages(session.id);
+  const { data: document } = useDocument(session.document_id || '');
   const updateSession = useUpdateChatSession();
   const saveMessage = useSaveChatMessage();
 
@@ -51,6 +57,11 @@ export function ChatPanel({ session }: ChatPanelProps) {
   useEffect(() => {
     scrollToBottom();
   }, [messages, streamingContent]);
+
+  // Reset document hash when session changes (switching documents)
+  useEffect(() => {
+    lastDocumentHashRef.current = null;
+  }, [session.id]);
 
   const handleInterrupt = async () => {
     // Capture requestId immediately to avoid race condition
@@ -133,7 +144,7 @@ export function ChatPanel({ session }: ChatPanelProps) {
     };
     setMessages((prev) => [...prev, userMessage]);
 
-    // Save user message to Supabase
+    // Save ONLY user message to Supabase (not document context)
     saveMessage.mutate(
       {
         session_id: session.id,
@@ -147,6 +158,33 @@ export function ChatPanel({ session }: ChatPanelProps) {
       }
     );
 
+    // Prepare message with document context for AI
+    let messageToSend = message;
+    let documentIncluded = false;
+
+    if (document) {
+      // Hash the current document
+      const currentHash = hashDocument(document.content as JSONContent, document.title);
+
+      // Only include document if it changed since last message
+      if (currentHash !== lastDocumentHashRef.current) {
+        const documentContext = convertToMarkdown(document.content as JSONContent, document.title);
+        messageToSend = `${documentContext}\n\n${message}`;
+        lastDocumentHashRef.current = currentHash;
+        documentIncluded = true;
+      }
+    }
+
+    // 🔍 DEBUG: Log the actual message being sent to backend (development only)
+    if (import.meta.env.DEV) {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📤 MESSAGE SENT TO AGENT SDK:');
+      console.log(`📄 Document context included: ${documentIncluded}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(messageToSend);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    }
+
     setIsStreaming(true);
     setStreamingContent('');
 
@@ -155,8 +193,8 @@ export function ChatPanel({ session }: ChatPanelProps) {
     // Use sdk_session_id from session for resume
     const sdkSessionId = session.sdk_session_id || undefined;
 
-    // Start streaming
-    const abortFn = await sendMessage(message, sdkSessionId, {
+    // Start streaming (with document context if changed)
+    const abortFn = await sendMessage(messageToSend, sdkSessionId, {
       onRequestId: (requestId) => {
         setCurrentRequestId(requestId);
       },

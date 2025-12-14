@@ -1,53 +1,88 @@
 import { useState, useEffect } from 'react';
 import { useDebouncedCallback } from 'use-debounce';
+import type { JSONContent } from '@tiptap/core';
 import { useDocument } from '../hooks/useDocument';
 import { useUpdateDocument } from '../hooks/useUpdateDocument';
+import { Editor } from './Editor';
 
 interface DocumentPanelProps {
   documentId: string;
 }
 
+type AutosaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
 export function DocumentPanel({ documentId }: DocumentPanelProps) {
   const { data: document, isLoading } = useDocument(documentId);
   const updateDocument = useUpdateDocument();
-  const [content, setContent] = useState('');
   const [title, setTitle] = useState('');
+  const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>('idle');
 
-  // Load document content when document changes
+  // Load document title when document changes
   useEffect(() => {
     if (document) {
       setTitle(document.title);
-      // Handle both string and object content
-      setContent(
-        typeof document.content === 'string'
-          ? document.content
-          : JSON.stringify(document.content, null, 2)
-      );
     }
   }, [document]);
 
-  const handleSave = () => {
+  const handleContentUpdate = (newContent: JSONContent) => {
+    setAutosaveStatus('saving');
+    debouncedContentSave(newContent);
+  };
+
+  const handleTitleUpdate = (newTitle: string) => {
+    setTitle(newTitle);
+    setAutosaveStatus('saving');
+    debouncedTitleSave(newTitle);
+  };
+
+  // Debounce auto-save to prevent excessive database writes
+  const debouncedContentSave = useDebouncedCallback((newContent: JSONContent) => {
     if (!document) return;
 
     updateDocument.mutate(
       {
         id: documentId,
         updates: {
-          title,
-          content: content, // Store as string in JSONB
+          content: newContent,
         },
       },
       {
+        onSuccess: () => {
+          setAutosaveStatus('saved');
+          setTimeout(() => setAutosaveStatus('idle'), 2000);
+        },
         onError: (error) => {
-          console.error('Failed to update document:', error);
-          // TODO: Show error toast
+          console.error('Failed to update document content:', error);
+          setAutosaveStatus('error');
+          setTimeout(() => setAutosaveStatus('idle'), 3000);
         },
       }
     );
-  };
+  }, 1000);
 
-  // Debounce auto-save to prevent excessive database writes
-  const debouncedSave = useDebouncedCallback(handleSave, 1000);
+  const debouncedTitleSave = useDebouncedCallback((newTitle: string) => {
+    if (!document) return;
+
+    updateDocument.mutate(
+      {
+        id: documentId,
+        updates: {
+          title: newTitle,
+        },
+      },
+      {
+        onSuccess: () => {
+          setAutosaveStatus('saved');
+          setTimeout(() => setAutosaveStatus('idle'), 2000);
+        },
+        onError: (error) => {
+          console.error('Failed to update document title:', error);
+          setAutosaveStatus('error');
+          setTimeout(() => setAutosaveStatus('idle'), 3000);
+        },
+      }
+    );
+  }, 1000);
 
   if (isLoading) {
     return (
@@ -65,6 +100,34 @@ export function DocumentPanel({ documentId }: DocumentPanelProps) {
     );
   }
 
+  const getAutosaveIndicator = () => {
+    switch (autosaveStatus) {
+      case 'saving':
+        return (
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-600" />
+            <span className="text-xs text-gray-400">Saving...</span>
+          </div>
+        );
+      case 'saved':
+        return (
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-lime-400" />
+            <span className="text-xs text-gray-400">Saved</span>
+          </div>
+        );
+      case 'error':
+        return (
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-red-500" />
+            <span className="text-xs text-red-400">Failed to save</span>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900">
       {/* Header */}
@@ -72,10 +135,7 @@ export function DocumentPanel({ documentId }: DocumentPanelProps) {
         <input
           type="text"
           value={title}
-          onChange={(e) => {
-            setTitle(e.target.value);
-            debouncedSave();
-          }}
+          onChange={(e) => handleTitleUpdate(e.target.value)}
           className="text-base font-normal text-gray-900 dark:text-gray-100 bg-transparent border-none focus:outline-none focus:ring-0 flex-1"
           placeholder="Document Title"
         />
@@ -83,16 +143,13 @@ export function DocumentPanel({ documentId }: DocumentPanelProps) {
       </div>
 
       {/* Content Editor */}
-      <div className="flex-1 overflow-y-auto p-6">
-        <textarea
-          value={content}
-          onChange={(e) => {
-            setContent(e.target.value);
-            debouncedSave();
-          }}
-          className="w-full h-full resize-none border-none focus:outline-none focus:ring-0 text-gray-900 dark:text-gray-100 bg-transparent font-mono text-sm"
-          placeholder="Start typing your document content..."
-        />
+      <div className="flex-1 overflow-y-auto">
+        <Editor key={documentId} content={document.content as JSONContent} onUpdate={handleContentUpdate} />
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-end px-4 h-11 border-t">
+        {getAutosaveIndicator()}
       </div>
     </div>
   );
