@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import type { JSONContent } from '@tiptap/core';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { sendMessage, interruptChat } from '@/lib/api/chat';
@@ -10,7 +9,7 @@ import type { ChatSession } from '../types';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { MessageSquare, Loader2 } from 'lucide-react';
 import { useDocument } from '@/features/documents/hooks/useDocument';
-import { convertToMarkdown } from '@/features/documents/utils/convertToMarkdown';
+import { formatDocumentContext } from '@/features/documents/utils/formatDocumentContext';
 import { hashDocument } from '@/features/documents/utils/hashDocument';
 
 interface Message {
@@ -164,11 +163,11 @@ export function ChatPanel({ session }: ChatPanelProps) {
 
     if (document) {
       // Hash the current document
-      const currentHash = hashDocument(document.content as JSONContent, document.title);
+      const currentHash = hashDocument(document.content, document.title);
 
       // Only include document if it changed since last message
       if (currentHash !== lastDocumentHashRef.current) {
-        const documentContext = convertToMarkdown(document.content as JSONContent, document.title);
+        const documentContext = formatDocumentContext(document.content, document.title);
         messageToSend = `${documentContext}\n\n${message}`;
         lastDocumentHashRef.current = currentHash;
         documentIncluded = true;

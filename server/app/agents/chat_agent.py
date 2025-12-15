@@ -1,5 +1,4 @@
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, TextBlock
-from claude_agent_sdk.mcp import StdioServerParameters
 from typing import AsyncIterator, Optional
 import logging
 import os
@@ -112,9 +111,9 @@ async def create_chat_stream(
         permission_mode='bypassPermissions',
         include_partial_messages=True,  # Enable real-time streaming
         mcp_servers={
-            "punypage_internal": StdioServerParameters(
-                command="uv",
-                args=[
+            "punypage_internal": {
+                "command": "uv",
+                "args": [
                     "run",
                     "--directory",
                     str(server_dir),
@@ -122,8 +121,8 @@ async def create_chat_stream(
                     "-m",
                     "mcp_servers.punypage_internal"
                 ],
-                env=mcp_env
-            )
+                "env": mcp_env
+            }
         }
     )
 

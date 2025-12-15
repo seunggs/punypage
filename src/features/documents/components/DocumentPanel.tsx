@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useDebouncedCallback } from 'use-debounce';
-import type { JSONContent } from '@tiptap/core';
 import { useDocument } from '../hooks/useDocument';
 import { useUpdateDocument } from '../hooks/useUpdateDocument';
 import { Editor } from './Editor';
@@ -24,7 +23,7 @@ export function DocumentPanel({ documentId }: DocumentPanelProps) {
     }
   }, [document]);
 
-  const handleContentUpdate = (newContent: JSONContent) => {
+  const handleContentUpdate = (newContent: string) => {
     setAutosaveStatus('saving');
     debouncedContentSave(newContent);
   };
@@ -36,7 +35,7 @@ export function DocumentPanel({ documentId }: DocumentPanelProps) {
   };
 
   // Debounce auto-save to prevent excessive database writes
-  const debouncedContentSave = useDebouncedCallback((newContent: JSONContent) => {
+  const debouncedContentSave = useDebouncedCallback((newContent: string) => {
     if (!document) return;
 
     updateDocument.mutate(
@@ -144,7 +143,7 @@ export function DocumentPanel({ documentId }: DocumentPanelProps) {
 
       {/* Content Editor */}
       <div className="flex-1 overflow-y-auto">
-        <Editor key={documentId} content={document.content as string | JSONContent} onUpdate={handleContentUpdate} />
+        <Editor key={documentId} content={document.content} onUpdate={handleContentUpdate} />
       </div>
 
       {/* Footer */}
