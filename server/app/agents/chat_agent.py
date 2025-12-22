@@ -1,11 +1,8 @@
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, TextBlock, HookMatcher
+from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, TextBlock
 from typing import AsyncIterator, Optional
 import logging
-import os
-import sys
-from pathlib import Path
 
-from app.core.active_clients import active_clients
+from app.core.session_manager import session_manager
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +14,10 @@ class ChatStreamMessage:
         logger.debug(f"ChatStreamMessage created - type: {type(msg).__name__}, msg: {msg}")
 
     def get_text_delta(self) -> Optional[str]:
-        """Extract text delta from StreamEvent or AssistantMessage"""
-        # Check if this is a StreamEvent with content_block_delta
+        """Extract text delta from StreamEvent only (for WebSocket streaming)"""
+        # Only extract from StreamEvent with content_block_delta
+        # With include_partial_messages=True, we get deltas during streaming
+        # We should NOT extract from final AssistantMessage to avoid duplication
         if hasattr(self.raw, 'event') and isinstance(self.raw.event, dict):
             event_type = self.raw.event.get('type')
             if event_type == 'content_block_delta':
@@ -28,15 +27,7 @@ class ChatStreamMessage:
                     logger.debug(f"Extracted text delta from StreamEvent: '{text}'")
                     return text
 
-        # Fallback: Check if this is an AssistantMessage with TextBlock content
-        if isinstance(self.raw, AssistantMessage):
-            for block in self.raw.content:
-                if isinstance(block, TextBlock):
-                    text = block.text
-                    logger.debug(f"Extracted text from AssistantMessage: {text[:100]}...")
-                    return text
-
-        logger.debug(f"No text extracted from message type: {type(self.raw).__name__}")
+        logger.debug(f"No text delta extracted from message type: {type(self.raw).__name__}")
         return None
 
     def get_session_id(self) -> Optional[str]:
@@ -47,154 +38,56 @@ class ChatStreamMessage:
             logger.info(f"Found session_id: {session_id}")
         return session_id
 
-    def get_tool_use(self) -> Optional[dict]:
-        """Extract tool use event from StreamEvent"""
-        if hasattr(self.raw, 'event') and isinstance(self.raw.event, dict):
-            event_type = self.raw.event.get('type')
-            if event_type == 'content_block_start':
-                content_block = self.raw.event.get('content_block', {})
-                if content_block.get('type') == 'tool_use':
-                    tool_use = {
-                        'tool_use_id': content_block.get('id'),
-                        'tool_name': content_block.get('name'),
-                        'input': content_block.get('input', {})
-                    }
-                    logger.info(f"Extracted tool use: {tool_use['tool_name']}")
-                    return tool_use
-        return None
-
-    def get_tool_result(self) -> Optional[dict]:
-        """Extract tool result from message"""
-        # Tool results come as part of the message content
-        # The SDK handles tool execution internally, but we can observe results
-        # by checking for tool_result type content blocks
-
-        # DEBUG: Log message structure
-        logger.info(f"[TOOL RESULT DEBUG] Checking message for tool results - type: {type(self.raw).__name__}")
-        if hasattr(self.raw, 'content'):
-            logger.info(f"[TOOL RESULT DEBUG] Message has content attribute, type: {type(self.raw.content)}")
-        if hasattr(self.raw, 'event'):
-            logger.info(f"[TOOL RESULT DEBUG] Message has event attribute: {self.raw.event}")
-
-        if hasattr(self.raw, 'content') and isinstance(self.raw.content, list):
-            logger.info(f"[TOOL RESULT DEBUG] Content is list with {len(self.raw.content)} blocks")
-            for i, block in enumerate(self.raw.content):
-                block_type = getattr(block, 'type', None)
-                logger.info(f"[TOOL RESULT DEBUG] Block {i}: type={block_type}, block={block}")
-                if hasattr(block, 'type') and block.type == 'tool_result':
-                    result = {
-                        'tool_use_id': getattr(block, 'tool_use_id', None),
-                        'content': getattr(block, 'content', None),
-                        'is_error': getattr(block, 'is_error', False)
-                    }
-                    logger.info(f"Extracted tool result for: {result['tool_use_id']}")
-                    return result
-        return None
-
 
 async def create_chat_stream(
     message: str,
-    session_id: Optional[str] = None,
-    request_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    on_cache_invalidate: Optional[callable] = None
+    session_id: str,
+    is_resuming: bool = False,
 ) -> AsyncIterator[ChatStreamMessage]:
     """
-    Create streaming chat using ClaudeSDKClient (per-request pattern)
+    Create streaming chat using per-request ClaudeSDKClient with resume.
+
+    Each HTTP request creates a new client instance. For follow-up messages,
+    the resume parameter loads previous conversation history.
 
     Args:
         message: User message to send
-        session_id: Optional session ID to resume conversation
-        request_id: Optional request ID for interrupt support
-        user_id: Optional user ID for MCP server (for document operations)
-        on_cache_invalidate: Optional callback for cache invalidation events
+        session_id: Conversation ID (used for resume parameter)
+        is_resuming: Whether this is resuming an existing conversation
 
     Yields:
         ChatStreamMessage: Wrapped SDK messages
     """
-    # Get project root (server directory)
-    server_dir = Path(__file__).parent.parent.parent
-
-    # Prepare environment for MCP server subprocess
-    mcp_env = os.environ.copy()
-    mcp_env['PUNYPAGE_USER_ID'] = user_id or 'anonymous'
-
-    # Define PostToolUse hook for cache invalidation
-    async def post_tool_use_hook(input_data, tool_use_id, context):
-        """Hook that fires after document operations to trigger cache invalidation"""
-        logger.info(f"[POST TOOL USE HOOK - FIRED] Received input_data: {input_data}")
-        logger.info(f"[POST TOOL USE HOOK - FIRED] tool_use_id: {tool_use_id}")
-        logger.info(f"[POST TOOL USE HOOK - FIRED] context: {context}")
-
-        tool_name = input_data.get('tool_name', '')
-        tool_response = input_data.get('tool_response', {})
-
-        logger.info(f"[POST TOOL USE HOOK] Tool: {tool_name}, Response: {tool_response}")
-        logger.info(f"[POST TOOL USE HOOK] on_cache_invalidate callback exists: {on_cache_invalidate is not None}")
-
-        # Check if this is a document operation
-        if tool_name in ['mcp__punypage_internal__create_document', 'mcp__punypage_internal__update_document']:
-            logger.info(f"[POST TOOL USE HOOK] ✓ Tool name matches document operation")
-            if on_cache_invalidate:
-                logger.info(f"[POST TOOL USE HOOK] ✓ Calling on_cache_invalidate callback for {tool_name}")
-                # Call the callback to emit cache invalidation event
-                await on_cache_invalidate(tool_name, tool_response)
-                logger.info(f"[POST TOOL USE HOOK] ✓ on_cache_invalidate callback completed")
-            else:
-                logger.error(f"[POST TOOL USE HOOK] ✗ on_cache_invalidate callback is None!")
-        else:
-            logger.info(f"[POST TOOL USE HOOK] ✗ Tool name '{tool_name}' does not match document operations")
-
-        return {
-            'hookSpecificOutput': {
-                'hookEventName': input_data.get('hook_event_name'),
-                'additionalContext': f'Cache invalidation triggered for {tool_name}'
-            }
-        }
-
-    # Configure client options with MCP server and hooks
-    options = ClaudeAgentOptions(
-        permission_mode='bypassPermissions',
-        include_partial_messages=True,  # Enable real-time streaming
-        mcp_servers={
-            "punypage_internal": {
-                "command": "uv",
-                "args": [
-                    "run",
-                    "--directory",
-                    str(server_dir),
-                    "python",
-                    "-m",
-                    "mcp_servers.punypage_internal"
-                ],
-                "env": mcp_env
-            }
-        },
-        hooks={
-            'PostToolUse': [
-                HookMatcher(
-                    matcher='mcp__punypage_internal__(create_document|update_document)',
-                    hooks=[post_tool_use_hook],
-                    timeout=30
-                )
-            ]
-        }
-    )
+    # Configure client options
+    if is_resuming:
+        # Resume existing conversation
+        options = ClaudeAgentOptions(
+            resume=session_id,
+            permission_mode='bypassPermissions',
+            include_partial_messages=True,
+        )
+        logger.info(f"Resuming conversation with session_id: {session_id}")
+    else:
+        # New conversation
+        options = ClaudeAgentOptions(
+            permission_mode='bypassPermissions',
+            include_partial_messages=True,
+        )
+        logger.info(f"Starting new conversation")
 
     try:
-        logger.info(f"Starting chat stream - request_id: {request_id}, session_id: {session_id or 'new'}, message: {message[:100]}")
+        logger.info(f"Starting chat stream - message: {message[:100]}")
+
+        # Mark session as active
+        await session_manager.mark_active(session_id)
 
         # Use async context manager for proper lifecycle
         async with ClaudeSDKClient(options=options) as client:
             logger.info("ClaudeSDKClient context manager entered")
 
-            # Store client for interrupt capability
-            if request_id:
-                await active_clients.store_client(request_id, client)
-
-            # Send query - automatically creates or resumes session
-            logger.info(f"Sending query to Claude - session_id: {session_id}")
-            await client.query(message, session_id=session_id)
+            # Send query
+            logger.info(f"Sending query: {message[:50]}")
+            await client.query(message)
             logger.info("Query sent successfully, waiting for responses...")
 
             # Stream messages as they arrive
@@ -210,7 +103,6 @@ async def create_chat_stream(
         logger.error(f"Chat stream error: {e}", exc_info=True)
         raise
     finally:
-        # Clean up client from manager
-        if request_id:
-            await active_clients.remove_client(request_id)
+        # Mark session as inactive
+        await session_manager.mark_inactive(session_id)
         logger.info("Chat stream completed")

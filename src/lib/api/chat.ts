@@ -5,182 +5,142 @@ export interface ChatMessage {
   content: string;
 }
 
-export interface ToolUse {
-  tool_use_id: string;
-  tool_name: string;
-  input: Record<string, any>;
-}
-
-export interface ToolResult {
-  tool_use_id: string;
-  content: any;
-  is_error: boolean;
-}
-
-export interface CacheInvalidateEvent {
-  tool_name: string;
-  tool_response: Record<string, any>;
-}
-
-export interface SendMessageCallbacks {
-  onRequestId: (requestId: string) => void;
+export interface ChatWebSocketCallbacks {
+  onJoined?: (roomId: string) => void;
+  onSdkSessionId?: (sdkSessionId: string) => void;
   onMessage: (message: ChatMessage) => void;
-  onToolUse?: (toolUse: ToolUse) => void;
-  onToolResult?: (toolResult: ToolResult) => void;
-  onCacheInvalidate?: (cacheEvent: CacheInvalidateEvent) => void;
-  onDone: (data: { sdkSessionId?: string }) => void;
+  onDone: () => void;
   onError: (error: string) => void;
+  onConnected?: () => void;
+  onDisconnected?: () => void;
+}
+
+export interface ChatWebSocket {
+  send: (message: string) => void;
+  close: () => void;
+  isConnected: () => boolean;
+  isJoined: () => boolean;
 }
 
 /**
- * Send a message and stream the response via SSE
- * Returns an abort function to cancel the request
+ * Create a persistent WebSocket connection for chat using join room pattern.
+ *
+ * Pattern:
+ *   1. Connect to WebSocket
+ *   2. Send join message with room ID (chat session ID) and optional SDK session ID
+ *   3. Wait for joined confirmation
+ *   4. Send messages over same connection
+ *   5. Receive SDK session ID after first message (save to database)
+ *   6. On disconnect, session stays alive on server for reconnection
+ *
+ * @param roomId - Chat session ID (our UUID) for the WebSocket room
+ * @param sdkSessionId - Optional Claude SDK session ID for resuming conversations
+ * @param callbacks - Event handlers for WebSocket events
+ * @returns WebSocket control object
  */
-export async function sendMessage(
-  message: string,
+export function createChatWebSocket(
+  roomId: string,
   sdkSessionId: string | undefined,
-  userId: string | undefined,
-  callbacks: SendMessageCallbacks
-): Promise<() => void> {
-  const { onRequestId, onMessage, onToolUse, onToolResult, onCacheInvalidate, onDone, onError } = callbacks;
-  const abortController = new AbortController();
-  let isAborted = false;
+  callbacks: ChatWebSocketCallbacks
+): ChatWebSocket {
+  // Convert HTTP URL to WebSocket URL
+  const wsUrl = API_URL.replace('http://', 'ws://').replace('https://', 'wss://');
+  const ws = new WebSocket(`${wsUrl}/api/chat/ws`);
 
-  // Start the fetch in the background
-  (async () => {
-    let reader: ReadableStreamDefaultReader<Uint8Array> | null | undefined = null;
+  let connected = false;
+  let joined = false;
 
+  ws.onopen = () => {
+    connected = true;
+    callbacks.onConnected?.();
+
+    // Send join message immediately after connection
+    // room_id: WebSocket room identifier (our chat session ID)
+    // sdk_session_id: If provided, backend will resume Claude SDK session
+    const joinMessage: any = {
+      type: 'join',
+      room_id: roomId,
+    };
+    if (sdkSessionId) {
+      joinMessage.sdk_session_id = sdkSessionId;
+    }
+
+    ws.send(JSON.stringify(joinMessage));
+  };
+
+  ws.onmessage = (event) => {
     try {
-      // Build query parameters - idiomatic SSE uses GET
-      const params = new URLSearchParams({ message });
-      if (sdkSessionId) {
-        params.append('sdkSessionId', sdkSessionId);
-      }
-      if (userId) {
-        params.append('user_id', userId);
-      }
+      const data = JSON.parse(event.data);
 
-      const response = await fetch(`${API_URL}/api/chat/stream?${params.toString()}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'text/event-stream',
-        },
-        signal: abortController.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
-      if (!reader) {
-        throw new Error('Response body is null');
-      }
-
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) {
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-
-          const eventMatch = line.match(/^event: (.+)$/m);
-          const dataMatch = line.match(/^data: (.+)$/m);
-
-          if (!eventMatch || !dataMatch) continue;
-
-          const event = eventMatch[1];
-          const data = JSON.parse(dataMatch[1]);
-
-          if (event === 'requestId') {
-            onRequestId(data.requestId);
-          } else if (event === 'message') {
-            onMessage(data);
-          } else if (event === 'tool_use') {
-            onToolUse?.(data);
-          } else if (event === 'tool_result') {
-            onToolResult?.(data);
-          } else if (event === 'cache_invalidate') {
-            console.log('[SSE CLIENT] ✓ Received cache_invalidate event:', data);
-            if (onCacheInvalidate) {
-              console.log('[SSE CLIENT] ✓ Calling onCacheInvalidate callback');
-              onCacheInvalidate(data);
-              console.log('[SSE CLIENT] ✓ onCacheInvalidate callback completed');
-            } else {
-              console.warn('[SSE CLIENT] ✗ onCacheInvalidate callback is undefined!');
-            }
-          } else if (event === 'done') {
-            onDone({ sdkSessionId: data.sdkSessionId });
-          } else if (event === 'error') {
-            onError(data.error);
-          }
-        }
+      if (data.type === 'joined') {
+        joined = true;
+        callbacks.onJoined?.(data.room_id);
+      } else if (data.type === 'sdk_session_id') {
+        callbacks.onSdkSessionId?.(data.sdk_session_id);
+      } else if (data.type === 'message') {
+        callbacks.onMessage({
+          role: data.role,
+          content: data.content,
+        });
+      } else if (data.type === 'done') {
+        callbacks.onDone();
+      } else if (data.type === 'error') {
+        callbacks.onError(data.error);
       }
     } catch (error) {
-      // Skip error handling if aborted (intentional interruption)
-      if (error instanceof Error && error.name === 'AbortError') {
-        // Silently ignore abort errors
-        isAborted = true;
+      console.error('Failed to parse WebSocket message:', error);
+      callbacks.onError('Failed to parse server message');
+    }
+  };
+
+  ws.onerror = (error) => {
+    console.error('WebSocket error:', error);
+    callbacks.onError('WebSocket connection error');
+  };
+
+  ws.onclose = () => {
+    connected = false;
+    joined = false;
+    callbacks.onDisconnected?.();
+  };
+
+  return {
+    send: (message: string) => {
+      if (!joined) {
+        callbacks.onError('Not joined to session yet. Please wait.');
         return;
       }
 
-      // Only call onError for actual errors
-      if (error instanceof Error) {
-        onError(error.message);
-      } else if (error && typeof error === 'object') {
-        // Check if it's an abort-related error
-        const errObj = error as any;
-        if (errObj.name === 'AbortError' || errObj.code === 20) {
-          return; // Silently ignore
-        }
-        onError(JSON.stringify(error));
-      } else if (error) {
-        onError(String(error));
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(
+          JSON.stringify({
+            type: 'message',
+            content: message,
+          })
+        );
+      } else {
+        callbacks.onError('WebSocket not connected');
       }
-    } finally {
-      // Clean up reader (skip if already aborted to avoid errors)
-      if (reader && !isAborted) {
-        try {
-          await reader.cancel();
-        } catch (e) {
-          // Ignore cleanup errors (e.g., AbortError)
-        }
+    },
+    close: () => {
+      // Optionally send leave message before closing
+      if (joined && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'leave' }));
       }
-    }
-  })().catch((err) => {
-    // Catch any unhandled promise rejections (e.g., AbortError)
-    // These are already handled in the try-catch above or are intentional aborts
-    if (err?.name !== 'AbortError') {
-      console.error('Unhandled error in sendMessage:', err);
-    }
-  });
-
-  // Return abort function for cleanup
-  return () => {
-    isAborted = true;
-    abortController.abort();
+      ws.close();
+    },
+    isConnected: () => connected && ws.readyState === WebSocket.OPEN,
+    isJoined: () => joined,
   };
 }
 
 /**
  * Interrupt an active chat stream
  */
-export async function interruptChat(requestId: string): Promise<void> {
+export async function interruptChat(sessionId: string): Promise<void> {
   await fetch(`${API_URL}/api/chat/interrupt`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ request_id: requestId }),
+    body: JSON.stringify({ session_id: sessionId }),
   });
 }
-
