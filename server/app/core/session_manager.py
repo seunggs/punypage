@@ -4,9 +4,9 @@ Session management for WebSocket-based persistent conversations.
 Maintains long-lived ClaudeSDKClient instances, one per WebSocket connection.
 """
 import asyncio
-from typing import Dict, Optional
+from typing import Dict, Optional, Callable
 import logging
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, HookMatcher
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,8 @@ class SessionManager:
     async def get_or_create_client(
         self,
         session_id: str,
-        options: ClaudeAgentOptions
+        options: ClaudeAgentOptions,
+        on_cache_invalidate: Optional[Callable[[str, dict], any]] = None
     ) -> tuple[ClaudeSDKClient, bool]:
         """
         Get existing ClaudeSDKClient or create a new one. Idempotent.
@@ -34,6 +35,8 @@ class SessionManager:
         Args:
             session_id: Unique session identifier
             options: Client configuration options (used only if creating new)
+            on_cache_invalidate: Optional callback for cache invalidation events
+                                Called when document create/update tools complete
 
         Returns:
             Tuple of (ClaudeSDKClient, was_created)
@@ -48,6 +51,35 @@ class SessionManager:
             if session_id in self._clients:
                 logger.info(f"Returning existing client for session: {session_id}")
                 return self._clients[session_id], False
+
+            # Add PostToolUse hook for cache invalidation if callback provided
+            if on_cache_invalidate:
+                async def post_tool_use_hook(input_data, tool_use_id, context):
+                    """Hook that fires after document operations to trigger cache invalidation"""
+                    tool_name = input_data.get('tool_name', '')
+                    tool_response = input_data.get('tool_response', {})
+
+                    logger.info(f"[POST TOOL USE HOOK] Tool: {tool_name}")
+
+                    # Check if this is a document operation
+                    if tool_name in ['mcp__punypage_internal__create_document', 'mcp__punypage_internal__update_document']:
+                        logger.info(f"[POST TOOL USE HOOK] Calling cache invalidation for {tool_name}")
+                        await on_cache_invalidate(tool_name, tool_response)
+
+                    return {}
+
+                # Add hook to options
+                existing_hooks = options.hooks or {}
+                post_tool_use_hooks = existing_hooks.get('PostToolUse', [])
+                post_tool_use_hooks.append(
+                    HookMatcher(
+                        matcher='mcp__punypage_internal__(create_document|update_document)',
+                        hooks=[post_tool_use_hook],
+                        timeout=30
+                    )
+                )
+                existing_hooks['PostToolUse'] = post_tool_use_hooks
+                options.hooks = existing_hooks
 
             # Create new client
             client = ClaudeSDKClient(options=options)

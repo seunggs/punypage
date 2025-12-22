@@ -6,6 +6,7 @@ import { useUpdateChatSession } from '../hooks/useChatSession';
 import { useSaveChatMessage } from '../hooks/useChatMessages';
 import { useLoadMessages } from '../hooks/useLoadMessages';
 import type { ChatSession } from '../types';
+import { useQueryClient } from '@tanstack/react-query';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { MessageSquare, Loader2 } from 'lucide-react';
 import { useDocument } from '@/features/documents/hooks/useDocument';
@@ -37,6 +38,7 @@ export function ChatPanel({ session }: ChatPanelProps) {
   const { data: document } = useDocument(session.document_id || '');
   const updateSession = useUpdateChatSession();
   const saveMessage = useSaveChatMessage();
+  const queryClient = useQueryClient();
 
   // Load messages from database
   useEffect(() => {
@@ -90,6 +92,27 @@ export function ChatPanel({ session }: ChatPanelProps) {
         // Accumulate streaming content in both ref and state
         streamingContentRef.current += msg.content;
         setStreamingContent((prev) => prev + msg.content);
+      },
+      onToolUse: (toolUse) => {
+        // Tool usage events (optional - for displaying tool calls in UI)
+        // Can be implemented later if needed
+      },
+      onToolResult: (toolResult) => {
+        // Tool result events (optional - for displaying tool results in UI)
+        // Can be implemented later if needed
+      },
+      onCacheInvalidate: (cacheEvent) => {
+        // Invalidate React Query cache when document is created/updated
+        const toolName = cacheEvent.tool_name;
+
+        if (toolName === 'mcp__punypage_internal__update_document' && session.document_id) {
+          queryClient.invalidateQueries({ queryKey: ['documents', session.document_id] });
+          queryClient.invalidateQueries({ queryKey: ['documents'] });
+        }
+
+        if (toolName === 'mcp__punypage_internal__create_document') {
+          queryClient.invalidateQueries({ queryKey: ['documents'] });
+        }
       },
       onDone: () => {
         // onDone is called once when WebSocket receives stop event

@@ -3,6 +3,7 @@ from typing import Optional
 import logging
 import re
 import uuid
+import asyncio
 from pydantic import BaseModel
 
 from app.agents.chat_agent import ChatStreamMessage
@@ -114,6 +115,17 @@ async def chat_websocket(websocket: WebSocket):
     current_room_id: Optional[str] = None
     client: Optional[ClaudeSDKClient] = None
 
+    # Cache invalidation queue for document operations
+    cache_invalidate_queue = asyncio.Queue()
+
+    async def on_cache_invalidate(tool_name: str, tool_response: dict):
+        """Callback from PostToolUse hook to emit cache invalidation events"""
+        logger.info(f"[CACHE INVALIDATE] Queueing event for tool: {tool_name}")
+        await cache_invalidate_queue.put({
+            'tool_name': tool_name,
+            'tool_response': tool_response
+        })
+
     try:
         while True:
             # Receive message from client
@@ -156,7 +168,9 @@ async def chat_websocket(websocket: WebSocket):
                                     permission_mode='bypassPermissions',
                                     include_partial_messages=True,
                                 )
-                                client, was_created = await session_manager.get_or_create_client(room_id, options)
+                                client, was_created = await session_manager.get_or_create_client(
+                                    room_id, options, on_cache_invalidate
+                                )
                                 logger.info(f"✅ Successfully resumed session for room: {room_id}")
                             except Exception as resume_error:
                                 # Resume failed - fall back to new session
@@ -165,7 +179,9 @@ async def chat_websocket(websocket: WebSocket):
                                     permission_mode='bypassPermissions',
                                     include_partial_messages=True,
                                 )
-                                client, was_created = await session_manager.get_or_create_client(room_id, options)
+                                client, was_created = await session_manager.get_or_create_client(
+                                    room_id, options, on_cache_invalidate
+                                )
                                 logger.info(f"✅ Created new session (resume fallback) for room: {room_id}")
                         else:
                             # New Claude conversation
@@ -174,7 +190,9 @@ async def chat_websocket(websocket: WebSocket):
                                 include_partial_messages=True,
                             )
                             logger.info(f"Creating new client for room: {room_id}")
-                            client, was_created = await session_manager.get_or_create_client(room_id, options)
+                            client, was_created = await session_manager.get_or_create_client(
+                                room_id, options, on_cache_invalidate
+                            )
                             logger.info(f"✅ Created new client for room: {room_id}")
 
                     current_room_id = room_id
@@ -227,6 +245,32 @@ async def chat_websocket(websocket: WebSocket):
                                 'role': 'assistant',
                                 'content': text_delta
                             })
+
+                        # Check for cache invalidation events
+                        while not cache_invalidate_queue.empty():
+                            try:
+                                cache_event = cache_invalidate_queue.get_nowait()
+                                logger.info(f"[WS] Sending cache_invalidate event: {cache_event['tool_name']}")
+                                await websocket.send_json({
+                                    'type': 'cache_invalidate',
+                                    'tool_name': cache_event['tool_name'],
+                                    'tool_response': cache_event['tool_response']
+                                })
+                            except asyncio.QueueEmpty:
+                                break
+
+                    # Drain any remaining cache invalidation events
+                    while not cache_invalidate_queue.empty():
+                        try:
+                            cache_event = cache_invalidate_queue.get_nowait()
+                            logger.info(f"[WS] Sending final cache_invalidate event: {cache_event['tool_name']}")
+                            await websocket.send_json({
+                                'type': 'cache_invalidate',
+                                'tool_name': cache_event['tool_name'],
+                                'tool_response': cache_event['tool_response']
+                            })
+                        except asyncio.QueueEmpty:
+                            break
 
                     # Send SDK session ID if we got one (for frontend to persist)
                     if sdk_session_id_to_send:

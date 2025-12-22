@@ -5,10 +5,30 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface ToolUse {
+  tool_use_id: string;
+  tool_name: string;
+  input: Record<string, any>;
+}
+
+export interface ToolResult {
+  tool_use_id: string;
+  content: any;
+  is_error: boolean;
+}
+
+export interface CacheInvalidateEvent {
+  tool_name: string;
+  tool_response: Record<string, any>;
+}
+
 export interface ChatWebSocketCallbacks {
   onJoined?: (roomId: string) => void;
   onSdkSessionId?: (sdkSessionId: string) => void;
   onMessage: (message: ChatMessage) => void;
+  onToolUse?: (toolUse: ToolUse) => void;
+  onToolResult?: (toolResult: ToolResult) => void;
+  onCacheInvalidate?: (cacheEvent: CacheInvalidateEvent) => void;
   onDone: () => void;
   onError: (error: string) => void;
   onConnected?: () => void;
@@ -82,6 +102,12 @@ export function createChatWebSocket(
           role: data.role,
           content: data.content,
         });
+      } else if (data.type === 'tool_use') {
+        callbacks.onToolUse?.(data);
+      } else if (data.type === 'tool_result') {
+        callbacks.onToolResult?.(data);
+      } else if (data.type === 'cache_invalidate') {
+        callbacks.onCacheInvalidate?.(data);
       } else if (data.type === 'done') {
         callbacks.onDone();
       } else if (data.type === 'error') {
