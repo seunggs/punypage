@@ -1,4 +1,4 @@
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, TextBlock
+from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, TextBlock, HookMatcher
 from typing import AsyncIterator, Optional
 import logging
 import os
@@ -68,8 +68,19 @@ class ChatStreamMessage:
         # Tool results come as part of the message content
         # The SDK handles tool execution internally, but we can observe results
         # by checking for tool_result type content blocks
+
+        # DEBUG: Log message structure
+        logger.info(f"[TOOL RESULT DEBUG] Checking message for tool results - type: {type(self.raw).__name__}")
+        if hasattr(self.raw, 'content'):
+            logger.info(f"[TOOL RESULT DEBUG] Message has content attribute, type: {type(self.raw.content)}")
+        if hasattr(self.raw, 'event'):
+            logger.info(f"[TOOL RESULT DEBUG] Message has event attribute: {self.raw.event}")
+
         if hasattr(self.raw, 'content') and isinstance(self.raw.content, list):
-            for block in self.raw.content:
+            logger.info(f"[TOOL RESULT DEBUG] Content is list with {len(self.raw.content)} blocks")
+            for i, block in enumerate(self.raw.content):
+                block_type = getattr(block, 'type', None)
+                logger.info(f"[TOOL RESULT DEBUG] Block {i}: type={block_type}, block={block}")
                 if hasattr(block, 'type') and block.type == 'tool_result':
                     result = {
                         'tool_use_id': getattr(block, 'tool_use_id', None),
@@ -85,7 +96,8 @@ async def create_chat_stream(
     message: str,
     session_id: Optional[str] = None,
     request_id: Optional[str] = None,
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
+    on_cache_invalidate: Optional[callable] = None
 ) -> AsyncIterator[ChatStreamMessage]:
     """
     Create streaming chat using ClaudeSDKClient (per-request pattern)
@@ -95,6 +107,7 @@ async def create_chat_stream(
         session_id: Optional session ID to resume conversation
         request_id: Optional request ID for interrupt support
         user_id: Optional user ID for MCP server (for document operations)
+        on_cache_invalidate: Optional callback for cache invalidation events
 
     Yields:
         ChatStreamMessage: Wrapped SDK messages
@@ -106,7 +119,40 @@ async def create_chat_stream(
     mcp_env = os.environ.copy()
     mcp_env['PUNYPAGE_USER_ID'] = user_id or 'anonymous'
 
-    # Configure client options with MCP server
+    # Define PostToolUse hook for cache invalidation
+    async def post_tool_use_hook(input_data, tool_use_id, context):
+        """Hook that fires after document operations to trigger cache invalidation"""
+        logger.info(f"[POST TOOL USE HOOK - FIRED] Received input_data: {input_data}")
+        logger.info(f"[POST TOOL USE HOOK - FIRED] tool_use_id: {tool_use_id}")
+        logger.info(f"[POST TOOL USE HOOK - FIRED] context: {context}")
+
+        tool_name = input_data.get('tool_name', '')
+        tool_response = input_data.get('tool_response', {})
+
+        logger.info(f"[POST TOOL USE HOOK] Tool: {tool_name}, Response: {tool_response}")
+        logger.info(f"[POST TOOL USE HOOK] on_cache_invalidate callback exists: {on_cache_invalidate is not None}")
+
+        # Check if this is a document operation
+        if tool_name in ['mcp__punypage_internal__create_document', 'mcp__punypage_internal__update_document']:
+            logger.info(f"[POST TOOL USE HOOK] ✓ Tool name matches document operation")
+            if on_cache_invalidate:
+                logger.info(f"[POST TOOL USE HOOK] ✓ Calling on_cache_invalidate callback for {tool_name}")
+                # Call the callback to emit cache invalidation event
+                await on_cache_invalidate(tool_name, tool_response)
+                logger.info(f"[POST TOOL USE HOOK] ✓ on_cache_invalidate callback completed")
+            else:
+                logger.error(f"[POST TOOL USE HOOK] ✗ on_cache_invalidate callback is None!")
+        else:
+            logger.info(f"[POST TOOL USE HOOK] ✗ Tool name '{tool_name}' does not match document operations")
+
+        return {
+            'hookSpecificOutput': {
+                'hookEventName': input_data.get('hook_event_name'),
+                'additionalContext': f'Cache invalidation triggered for {tool_name}'
+            }
+        }
+
+    # Configure client options with MCP server and hooks
     options = ClaudeAgentOptions(
         permission_mode='bypassPermissions',
         include_partial_messages=True,  # Enable real-time streaming
@@ -123,6 +169,15 @@ async def create_chat_stream(
                 ],
                 "env": mcp_env
             }
+        },
+        hooks={
+            'PostToolUse': [
+                HookMatcher(
+                    matcher='mcp__punypage_internal__(create_document|update_document)',
+                    hooks=[post_tool_use_hook],
+                    timeout=30
+                )
+            ]
         }
     )
 

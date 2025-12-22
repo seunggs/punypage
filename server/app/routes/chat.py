@@ -4,6 +4,7 @@ from typing import Optional
 import logging
 import re
 import uuid
+import asyncio
 from pydantic import BaseModel
 
 from app.agents.chat_agent import create_chat_stream
@@ -104,15 +105,28 @@ async def chat_stream(
         final_session_id = None
         logger.info(f"Event generator started - request_id: {request_id}, message: {message[:50]}, session_id: {session_id}")
 
+        # Queue for cache invalidation events from PostToolUse hook
+        cache_invalidate_queue = asyncio.Queue()
+
+        async def on_cache_invalidate(tool_name: str, tool_response: dict):
+            """Callback from PostToolUse hook to emit cache invalidation events"""
+            logger.info(f"[CACHE INVALIDATE CALLBACK] ✓ Called with tool: {tool_name}, response: {tool_response}")
+            logger.info(f"[CACHE INVALIDATE CALLBACK] ✓ Queueing event...")
+            await cache_invalidate_queue.put({
+                'tool_name': tool_name,
+                'tool_response': tool_response
+            })
+            logger.info(f"[CACHE INVALIDATE CALLBACK] ✓ Event queued successfully. Queue size: {cache_invalidate_queue.qsize()}")
+
         try:
             # Send request ID immediately for interrupt capability
             yield format_sse_event('requestId', {
                 'requestId': request_id
             })
 
-            # Create chat stream with request_id and user_id
+            # Create chat stream with request_id, user_id, and cache invalidation callback
             logger.info("Creating chat stream...")
-            stream = create_chat_stream(message, session_id, request_id, user_id)
+            stream = create_chat_stream(message, session_id, request_id, user_id, on_cache_invalidate)
 
             # Process messages from agent
             msg_count = 0
@@ -149,7 +163,32 @@ async def chat_stream(
                     logger.info(f"Captured session ID: {session}")
                     final_session_id = session
 
+                # Check for cache invalidation events from PostToolUse hook
+                logger.debug(f"[SSE STREAM] Checking cache invalidation queue (size: {cache_invalidate_queue.qsize()})")
+                while not cache_invalidate_queue.empty():
+                    try:
+                        cache_event = cache_invalidate_queue.get_nowait()
+                        logger.info(f"[SSE STREAM] ✓ Dequeued cache event: {cache_event}")
+                        logger.info(f"[SSE STREAM] ✓ Sending cache_invalidate SSE event for: {cache_event['tool_name']}")
+                        yield format_sse_event('cache_invalidate', cache_event)
+                        logger.info(f"[SSE STREAM] ✓ cache_invalidate SSE event sent successfully")
+                    except asyncio.QueueEmpty:
+                        logger.debug(f"[SSE STREAM] Queue empty (race condition)")
+                        break
+
             logger.info(f"Processed {msg_count} messages from stream")
+
+            # Drain any remaining cache invalidation events
+            logger.info(f"[SSE STREAM] Draining final cache invalidation events (queue size: {cache_invalidate_queue.qsize()})")
+            while not cache_invalidate_queue.empty():
+                try:
+                    cache_event = cache_invalidate_queue.get_nowait()
+                    logger.info(f"[SSE STREAM] ✓ Dequeued final cache event: {cache_event}")
+                    logger.info(f"[SSE STREAM] ✓ Sending final cache_invalidate SSE event for: {cache_event['tool_name']}")
+                    yield format_sse_event('cache_invalidate', cache_event)
+                    logger.info(f"[SSE STREAM] ✓ Final cache_invalidate SSE event sent successfully")
+                except asyncio.QueueEmpty:
+                    break
 
             # Send completion event with session ID
             logger.info(f"Sending done event - sessionId: {final_session_id}")

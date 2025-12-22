@@ -38,15 +38,16 @@ server = Server("punypage_internal")
 @server.list_tools()
 async def list_tools() -> list[Tool]:
     """List available tools"""
+    logger.info("list_tools() called - returning 5 document tools")
     return [
         Tool(
             name="create_document",
-            description="Create a new document with markdown content. Use this when the user asks to create, write, or draft a new document.",
+            description="Create a new document, article, post, report, note, or any written content with markdown formatting. Use this when the user asks to: create, write, draft, compose, author, or start a new document/article/post/report/blog/essay/note. The content will be stored and displayed in the document editor.",
             inputSchema=CreateDocumentInput.model_json_schema(),
         ),
         Tool(
             name="update_document",
-            description="Update an existing document. Use this when the user asks to edit, modify, or update a document. Provide only the fields that need to be changed.",
+            description="Update, edit, modify, revise, or change an existing document/article/post/report. Use this when the user asks to edit, modify, update, revise, change, or improve existing content. Provide only the fields that need to be changed.",
             inputSchema=UpdateDocumentInput.model_json_schema(),
         ),
         Tool(

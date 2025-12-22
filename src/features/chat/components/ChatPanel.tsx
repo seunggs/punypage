@@ -6,23 +6,37 @@ import { useUpdateChatSession } from '../hooks/useChatSession';
 import { useSaveChatMessage } from '../hooks/useChatMessages';
 import { useLoadMessages } from '../hooks/useLoadMessages';
 import type { ChatSession } from '../types';
+import { useQueryClient } from '@tanstack/react-query';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { MessageSquare, Loader2 } from 'lucide-react';
 import { useDocument } from '@/features/documents/hooks/useDocument';
 import { formatDocumentContext } from '@/features/documents/utils/formatDocumentContext';
 import { hashDocument } from '@/features/documents/utils/hashDocument';
+import { supabase } from '@/lib/supabase';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
 
+interface ToolCallDisplay {
+  id: string;
+  tool_name: string;
+  input: Record<string, any>;
+  result?: any;
+  is_error?: boolean;
+}
+
+type ChatEvent =
+  | { type: 'message'; data: Message }
+  | { type: 'tool_call'; data: ToolCallDisplay };
+
 interface ChatPanelProps {
   session: ChatSession;
 }
 
 export function ChatPanel({ session }: ChatPanelProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [events, setEvents] = useState<ChatEvent[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null);
@@ -36,16 +50,26 @@ export function ChatPanel({ session }: ChatPanelProps) {
   const { data: document } = useDocument(session.document_id || '');
   const updateSession = useUpdateChatSession();
   const saveMessage = useSaveChatMessage();
+  const queryClient = useQueryClient();
 
-  // Load messages from database
+  // Load messages from database - ONLY on initial load
   useEffect(() => {
-    if (loadedMessages) {
-      setMessages(
-        loadedMessages.map((msg) => ({
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content,
-        }))
-      );
+    if (loadedMessages && loadedMessages.length > 0) {
+      setEvents((prevEvents) => {
+        // If we already have events, don't overwrite them (preserves tool calls during streaming)
+        if (prevEvents.length > 0) {
+          return prevEvents;
+        }
+
+        // Only load messages on initial mount when events array is empty
+        return loadedMessages.map((msg) => ({
+          type: 'message' as const,
+          data: {
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+          },
+        }));
+      });
     }
   }, [loadedMessages]);
 
@@ -55,11 +79,12 @@ export function ChatPanel({ session }: ChatPanelProps) {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, streamingContent]);
+  }, [events, streamingContent]);
 
-  // Reset document hash when session changes (switching documents)
+  // Reset document hash and events when session changes (switching chats)
   useEffect(() => {
     lastDocumentHashRef.current = null;
+    setEvents([]); // Clear events so messages can be reloaded for new session
   }, [session.id]);
 
   const handleInterrupt = async () => {
@@ -80,10 +105,10 @@ export function ChatPanel({ session }: ChatPanelProps) {
       // Save partial response if any content was streamed
       if (streamingContent) {
         // Add both assistant message and interrupted marker in single update
-        setMessages((prev) => [
+        setEvents((prev) => [
           ...prev,
-          { role: 'assistant', content: streamingContent },
-          { role: 'user', content: 'Interrupted' },
+          { type: 'message', data: { role: 'assistant', content: streamingContent } },
+          { type: 'message', data: { role: 'user', content: 'Interrupted' } },
         ]);
 
         // Save assistant message to Supabase
@@ -101,9 +126,9 @@ export function ChatPanel({ session }: ChatPanelProps) {
         );
       } else {
         // No content streamed yet, just add interrupted message
-        setMessages((prev) => [
+        setEvents((prev) => [
           ...prev,
-          { role: 'user', content: 'Interrupted' },
+          { type: 'message', data: { role: 'user', content: 'Interrupted' } },
         ]);
       }
 
@@ -136,12 +161,15 @@ export function ChatPanel({ session }: ChatPanelProps) {
     // Reset interrupt flag for new message
     isIntentionalInterruptRef.current = false;
 
+    // Get current user ID for MCP server
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id;
+
     // Add user message to state
-    const userMessage: Message = {
-      role: 'user',
-      content: message,
-    };
-    setMessages((prev) => [...prev, userMessage]);
+    setEvents((prev) => [
+      ...prev,
+      { type: 'message', data: { role: 'user', content: message } },
+    ]);
 
     // Save ONLY user message to Supabase (not document context)
     saveMessage.mutate(
@@ -167,7 +195,7 @@ export function ChatPanel({ session }: ChatPanelProps) {
 
       // Only include document if it changed since last message
       if (currentHash !== lastDocumentHashRef.current) {
-        const documentContext = formatDocumentContext(document.content, document.title);
+        const documentContext = formatDocumentContext(document.id, document.content, document.title);
         messageToSend = `${documentContext}\n\n${message}`;
         lastDocumentHashRef.current = currentHash;
         documentIncluded = true;
@@ -193,7 +221,7 @@ export function ChatPanel({ session }: ChatPanelProps) {
     const sdkSessionId = session.sdk_session_id || undefined;
 
     // Start streaming (with document context if changed)
-    const abortFn = await sendMessage(messageToSend, sdkSessionId, {
+    const abortFn = await sendMessage(messageToSend, sdkSessionId, userId, {
       onRequestId: (requestId) => {
         setCurrentRequestId(requestId);
       },
@@ -201,12 +229,68 @@ export function ChatPanel({ session }: ChatPanelProps) {
         accumulatedContent += msg.content;
         setStreamingContent(accumulatedContent);
       },
+      onToolUse: (toolUse) => {
+        setEvents((prev) => [
+          ...prev,
+          {
+            type: 'tool_call' as const,
+            data: {
+              id: toolUse.tool_use_id,
+              tool_name: toolUse.tool_name,
+              input: toolUse.input,
+            },
+          },
+        ]);
+      },
+      onCacheInvalidate: (cacheEvent) => {
+        console.log('[CHAT PANEL] ✓ onCacheInvalidate called with:', cacheEvent);
+        const toolName = cacheEvent.tool_name;
+        console.log('[CHAT PANEL] Tool name:', toolName);
+        console.log('[CHAT PANEL] Session document_id:', session.document_id);
+
+        // Handle document cache invalidation based on tool type
+        if (toolName === 'mcp__punypage_internal__update_document' && session.document_id) {
+          console.log('[CHAT PANEL] ✓ Invalidating cache for update_document');
+          console.log('[CHAT PANEL] ✓ Invalidating key: ["documents", "' + session.document_id + '"]');
+          queryClient.invalidateQueries({ queryKey: ['documents', session.document_id] });
+          console.log('[CHAT PANEL] ✓ Invalidating key: ["documents"]');
+          queryClient.invalidateQueries({ queryKey: ['documents'] });
+          console.log('[CHAT PANEL] ✓ Cache invalidation completed');
+        } else if (toolName === 'mcp__punypage_internal__update_document' && !session.document_id) {
+          console.error('[CHAT PANEL] ✗ update_document tool called but session.document_id is missing!');
+        }
+
+        if (toolName === 'mcp__punypage_internal__create_document') {
+          console.log('[CHAT PANEL] ✓ Invalidating cache for create_document');
+          console.log('[CHAT PANEL] ✓ Invalidating key: ["documents"]');
+          queryClient.invalidateQueries({ queryKey: ['documents'] });
+          console.log('[CHAT PANEL] ✓ Cache invalidation completed');
+        }
+      },
+      onToolResult: (toolResult) => {
+        // Update tool call with result
+        setEvents((prev) =>
+          prev.map((event) => {
+            if (event.type === 'tool_call' && event.data.id === toolResult.tool_use_id) {
+              return {
+                ...event,
+                data: {
+                  ...event.data,
+                  result: toolResult.content,
+                  is_error: toolResult.is_error,
+                },
+              };
+            }
+            return event;
+          })
+        );
+      },
       onDone: (data) => {
         if (accumulatedContent) {
           // Add assistant message to state
-          setMessages((prev) => [
+          setEvents((prev) => [
             ...prev,
-            { role: 'assistant', content: accumulatedContent },
+            { type: 'message' as const, data: { role: 'assistant' as const, content: accumulatedContent } },
           ]);
 
           // Save assistant message to Supabase
@@ -253,11 +337,14 @@ export function ChatPanel({ session }: ChatPanelProps) {
         }
 
         console.error('Error:', error);
-        setMessages((prev) => [
+        setEvents((prev) => [
           ...prev,
           {
-            role: 'assistant',
-            content: `Error: ${error}`,
+            type: 'message',
+            data: {
+              role: 'assistant',
+              content: `Error: ${error}`,
+            },
           },
         ]);
         setStreamingContent('');
@@ -289,7 +376,7 @@ export function ChatPanel({ session }: ChatPanelProps) {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
-        {messages.length === 0 && !streamingContent && (
+        {events.length === 0 && !streamingContent && (
           <div className="flex items-center justify-center h-full">
             <Empty>
               <EmptyHeader>
@@ -305,9 +392,41 @@ export function ChatPanel({ session }: ChatPanelProps) {
           </div>
         )}
 
-        {messages.map((msg, index) => (
-          <ChatMessage key={index} role={msg.role} content={msg.content} />
-        ))}
+        {/* Render events in chronological order */}
+        {events.map((event, index) => {
+          if (event.type === 'message') {
+            return <ChatMessage key={index} role={event.data.role} content={event.data.content} />;
+          } else if (event.type === 'tool_call') {
+            const toolCall = event.data;
+            return (
+              <div
+                key={toolCall.id}
+                className="mb-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 shadow-xs"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    🔧 {toolCall.tool_name}
+                  </span>
+                  {toolCall.result && !toolCall.is_error && (
+                    <span className="text-xs text-green-600 dark:text-green-400">✓ Completed</span>
+                  )}
+                  {toolCall.is_error && (
+                    <span className="text-xs text-red-600 dark:text-red-400">✗ Error</span>
+                  )}
+                </div>
+                <div className="text-xs text-gray-600 dark:text-gray-400 font-mono">
+                  {JSON.stringify(toolCall.input, null, 2)}
+                </div>
+                {toolCall.result && (
+                  <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                    <span className="font-medium">Result:</span> {String(toolCall.result)}
+                  </div>
+                )}
+              </div>
+            );
+          }
+          return null;
+        })}
 
         {isStreaming && !streamingContent && (
           <div className="flex items-center gap-2 mb-4 text-gray-500 dark:text-gray-400">

@@ -5,9 +5,29 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface ToolUse {
+  tool_use_id: string;
+  tool_name: string;
+  input: Record<string, any>;
+}
+
+export interface ToolResult {
+  tool_use_id: string;
+  content: any;
+  is_error: boolean;
+}
+
+export interface CacheInvalidateEvent {
+  tool_name: string;
+  tool_response: Record<string, any>;
+}
+
 export interface SendMessageCallbacks {
   onRequestId: (requestId: string) => void;
   onMessage: (message: ChatMessage) => void;
+  onToolUse?: (toolUse: ToolUse) => void;
+  onToolResult?: (toolResult: ToolResult) => void;
+  onCacheInvalidate?: (cacheEvent: CacheInvalidateEvent) => void;
   onDone: (data: { sdkSessionId?: string }) => void;
   onError: (error: string) => void;
 }
@@ -19,9 +39,10 @@ export interface SendMessageCallbacks {
 export async function sendMessage(
   message: string,
   sdkSessionId: string | undefined,
+  userId: string | undefined,
   callbacks: SendMessageCallbacks
 ): Promise<() => void> {
-  const { onRequestId, onMessage, onDone, onError } = callbacks;
+  const { onRequestId, onMessage, onToolUse, onToolResult, onCacheInvalidate, onDone, onError } = callbacks;
   const abortController = new AbortController();
   let isAborted = false;
 
@@ -34,6 +55,9 @@ export async function sendMessage(
       const params = new URLSearchParams({ message });
       if (sdkSessionId) {
         params.append('sdkSessionId', sdkSessionId);
+      }
+      if (userId) {
+        params.append('user_id', userId);
       }
 
       const response = await fetch(`${API_URL}/api/chat/stream?${params.toString()}`, {
@@ -83,6 +107,19 @@ export async function sendMessage(
             onRequestId(data.requestId);
           } else if (event === 'message') {
             onMessage(data);
+          } else if (event === 'tool_use') {
+            onToolUse?.(data);
+          } else if (event === 'tool_result') {
+            onToolResult?.(data);
+          } else if (event === 'cache_invalidate') {
+            console.log('[SSE CLIENT] ✓ Received cache_invalidate event:', data);
+            if (onCacheInvalidate) {
+              console.log('[SSE CLIENT] ✓ Calling onCacheInvalidate callback');
+              onCacheInvalidate(data);
+              console.log('[SSE CLIENT] ✓ onCacheInvalidate callback completed');
+            } else {
+              console.warn('[SSE CLIENT] ✗ onCacheInvalidate callback is undefined!');
+            }
           } else if (event === 'done') {
             onDone({ sdkSessionId: data.sdkSessionId });
           } else if (event === 'error') {
