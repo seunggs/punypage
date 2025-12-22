@@ -20,7 +20,7 @@ SESSION_ID_PATTERN = re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{
 
 class InterruptRequest(BaseModel):
     """Request body for interrupt endpoint"""
-    session_id: str
+    session_id: str  # Chat session UUID (room_id in WebSocket terminology)
 
 
 @router.post("/chat/interrupt")
@@ -29,29 +29,29 @@ async def interrupt_chat(body: InterruptRequest):
     Interrupt an active chat stream
 
     Request body:
-        - session_id: UUID of the conversation session
+        - session_id: Chat session UUID (room_id)
 
     Returns:
         - success: true if interrupted
-        - error: if session not found or interrupt failed
+        - error: if room not found or interrupt failed
     """
-    session_id = body.session_id
-    logger.info(f"Interrupt request for session: {session_id}")
+    room_id = body.session_id  # Frontend sends session.id which is the room_id
+    logger.info(f"Interrupt request for room: {room_id}")
 
     try:
-        # Interrupt the session via SessionManager
-        await session_manager.interrupt_session(session_id)
-        logger.info(f"Successfully interrupted session: {session_id}")
+        # Interrupt the session via SessionManager (keyed by room_id)
+        await session_manager.interrupt_session(room_id)
+        logger.info(f"Successfully interrupted room: {room_id}")
 
         return {"success": True}
 
     except KeyError:
         raise HTTPException(
             status_code=404,
-            detail="Session not found or already completed"
+            detail="Room not found or already completed"
         )
     except Exception as e:
-        logger.error(f"Failed to interrupt {session_id}: {e}", exc_info=True)
+        logger.error(f"Failed to interrupt {room_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to interrupt: {str(e)}"

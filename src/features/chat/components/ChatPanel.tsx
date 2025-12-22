@@ -149,14 +149,14 @@ export function ChatPanel({ session }: ChatPanelProps) {
   }, [session.id]);
 
   const handleInterrupt = async () => {
-    if (!session.sdk_session_id) return;
+    if (!isStreaming) return;
 
     setIsInterrupting(true);
     isIntentionalInterruptRef.current = true;
 
     try {
-      // Call backend interrupt
-      await interruptChat(session.sdk_session_id);
+      // Call backend interrupt with room_id (session.id)
+      await interruptChat(session.id);
 
       // Save partial response if any content was streamed
       if (streamingContent) {
