@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { JSONContent } from '@tiptap/core';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
-import { sendMessage, interruptChat } from '@/lib/api/chat';
+import { createChatWebSocket, interruptChat, type ChatWebSocket } from '@/lib/api/chat';
 import { useUpdateChatSession } from '../hooks/useChatSession';
 import { useSaveChatMessage } from '../hooks/useChatMessages';
 import { useLoadMessages } from '../hooks/useLoadMessages';
@@ -26,12 +26,13 @@ export function ChatPanel({ session }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
-  const [currentRequestId, setCurrentRequestId] = useState<string | null>(null);
   const [isInterrupting, setIsInterrupting] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastDocumentHashRef = useRef<string | null>(null);
-  const abortFnRef = useRef<(() => void) | null>(null);
+  const wsRef = useRef<ChatWebSocket | null>(null);
   const isIntentionalInterruptRef = useRef<boolean>(false);
+  const streamingContentRef = useRef<string>('');
 
   const { data: loadedMessages, isLoading: messagesLoading } = useLoadMessages(session.id);
   const { data: document } = useDocument(session.document_id || '');
@@ -58,25 +59,104 @@ export function ChatPanel({ session }: ChatPanelProps) {
     scrollToBottom();
   }, [messages, streamingContent]);
 
-  // Reset document hash when session changes (switching documents)
+  // Reset refs when switching sessions
   useEffect(() => {
     lastDocumentHashRef.current = null;
+    streamingContentRef.current = '';
+  }, [session.id]);
+
+  // WebSocket connection
+  useEffect(() => {
+    // Close any existing connection first (handles React Strict Mode cleanup)
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    // Create WebSocket connection
+    const ws = createChatWebSocket(session.id, session.sdk_session_id || undefined, {
+      onJoined: (roomId) => {
+        // Room joined successfully
+      },
+      onSdkSessionId: (sdkSessionId) => {
+        // Save SDK session ID to database (sent after first message)
+        if (!session.sdk_session_id) {
+          updateSession.mutate({
+            id: session.id,
+            sdk_session_id: sdkSessionId,
+          });
+        }
+      },
+      onMessage: (msg) => {
+        // Accumulate streaming content in both ref and state
+        streamingContentRef.current += msg.content;
+        setStreamingContent((prev) => prev + msg.content);
+      },
+      onDone: () => {
+        // onDone is called once when WebSocket receives stop event
+        const content = streamingContentRef.current;
+
+        if (content) {
+          // Add to messages
+          setMessages((prev) => [...prev, { role: 'assistant', content }]);
+
+          // Save to database - only runs once because onDone fires once
+          saveMessage.mutate({
+            session_id: session.id,
+            role: 'assistant',
+            content,
+          });
+        }
+
+        // Clear
+        streamingContentRef.current = '';
+        setStreamingContent('');
+        setIsStreaming(false);
+      },
+      onError: (error) => {
+        // Skip showing error if this was an intentional interrupt
+        if (isIntentionalInterruptRef.current) {
+          isIntentionalInterruptRef.current = false;
+          return;
+        }
+
+        console.error('WebSocket error:', error);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: `Error: ${error}`,
+          },
+        ]);
+        setStreamingContent('');
+        setIsStreaming(false);
+      },
+      onConnected: () => {
+        // WebSocket connected
+      },
+      onDisconnected: () => {
+        // WebSocket disconnected
+      },
+    });
+
+    wsRef.current = ws;
+
+    // Cleanup: close WebSocket when unmounting or session changes
+    return () => {
+      ws.close();
+      wsRef.current = null;
+    };
   }, [session.id]);
 
   const handleInterrupt = async () => {
-    // Capture requestId immediately to avoid race condition
-    const requestId = currentRequestId;
-    if (!requestId) return;
+    if (!session.sdk_session_id) return;
 
     setIsInterrupting(true);
     isIntentionalInterruptRef.current = true;
 
     try {
       // Call backend interrupt
-      await interruptChat(requestId);
-
-      // Abort SSE stream
-      abortFnRef.current?.();
+      await interruptChat(session.sdk_session_id);
 
       // Save partial response if any content was streamed
       if (streamingContent) {
@@ -127,8 +207,6 @@ export function ChatPanel({ session }: ChatPanelProps) {
       setIsStreaming(false);
       setIsInterrupting(false);
       setStreamingContent('');
-      setCurrentRequestId(null);
-      abortFnRef.current = null;
       // Don't reset isIntentionalInterruptRef here - let onError callback handle it
     }
   };
@@ -136,6 +214,31 @@ export function ChatPanel({ session }: ChatPanelProps) {
   const handleSendMessage = async (message: string) => {
     // Reset interrupt flag for new message
     isIntentionalInterruptRef.current = false;
+
+    // Check WebSocket connection and join status
+    if (!wsRef.current || !wsRef.current.isConnected()) {
+      console.error('WebSocket not connected');
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: 'Error: Not connected to chat server',
+        },
+      ]);
+      return;
+    }
+
+    if (!wsRef.current.isJoined()) {
+      console.error('WebSocket not joined to session yet');
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: 'Error: Joining session, please wait...',
+        },
+      ]);
+      return;
+    }
 
     // Add user message to state
     const userMessage: Message = {
@@ -175,100 +278,11 @@ export function ChatPanel({ session }: ChatPanelProps) {
       }
     }
 
-    // 🔍 DEBUG: Log the actual message being sent to backend (development only)
-    if (import.meta.env.DEV) {
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('📤 MESSAGE SENT TO AGENT SDK:');
-      console.log(`📄 Document context included: ${documentIncluded}`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(messageToSend);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-    }
-
     setIsStreaming(true);
     setStreamingContent('');
 
-    let accumulatedContent = '';
-
-    // Use sdk_session_id from session for resume
-    const sdkSessionId = session.sdk_session_id || undefined;
-
-    // Start streaming (with document context if changed)
-    const abortFn = await sendMessage(messageToSend, sdkSessionId, {
-      onRequestId: (requestId) => {
-        setCurrentRequestId(requestId);
-      },
-      onMessage: (msg) => {
-        accumulatedContent += msg.content;
-        setStreamingContent(accumulatedContent);
-      },
-      onDone: (data) => {
-        if (accumulatedContent) {
-          // Add assistant message to state
-          setMessages((prev) => [
-            ...prev,
-            { role: 'assistant', content: accumulatedContent },
-          ]);
-
-          // Save assistant message to Supabase
-          saveMessage.mutate(
-            {
-              session_id: session.id,
-              role: 'assistant',
-              content: accumulatedContent,
-            },
-            {
-              onError: (error) => {
-                console.error('Failed to save assistant message:', error);
-              },
-            }
-          );
-        }
-
-        // Update session with sdk_session_id if received
-        if (data.sdkSessionId) {
-          updateSession.mutate(
-            {
-              id: session.id,
-              sdk_session_id: data.sdkSessionId,
-            },
-            {
-              onError: (error) => {
-                console.error('Failed to update session SDK ID:', error);
-              },
-            }
-          );
-        }
-
-        setStreamingContent('');
-        setIsStreaming(false);
-        setCurrentRequestId(null);
-        abortFnRef.current = null;
-        isIntentionalInterruptRef.current = false;
-      },
-      onError: (error) => {
-        // Skip showing error if this was an intentional interrupt
-        if (isIntentionalInterruptRef.current) {
-          isIntentionalInterruptRef.current = false;
-          return;
-        }
-
-        console.error('Error:', error);
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'assistant',
-            content: `Error: ${error}`,
-          },
-        ]);
-        setStreamingContent('');
-        setIsStreaming(false);
-        setCurrentRequestId(null);
-        abortFnRef.current = null;
-      },
-    });
-
-    abortFnRef.current = abortFn;
+    // Send message over persistent WebSocket connection
+    wsRef.current.send(messageToSend);
   };
 
   if (messagesLoading) {
