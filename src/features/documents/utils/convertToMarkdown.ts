@@ -13,8 +13,8 @@ export function convertToMarkdown(
   content: JSONContent | null | undefined,
   title: string
 ): string {
-  // Handle empty content
-  if (!content) {
+  // Handle empty or invalid content
+  if (!content || typeof content !== 'object' || Object.keys(content).length === 0) {
     return `<document_title>${title}</document_title>\n\n<document_content>\n\n</document_content>`;
   }
 
@@ -28,7 +28,7 @@ export function convertToMarkdown(
     // Wrap in document tags with title and content separated
     return `<document_title>${title}</document_title>\n\n<document_content>\n${markdown}\n</document_content>`;
   } catch (error) {
-    console.error('Failed to convert document to markdown:', error);
+    console.error('Failed to convert document to markdown:', error, 'Content:', content);
     // Return title only if conversion fails
     return `<document_title>${title}</document_title>\n\n<document_content>\n[Error converting document content]\n</document_content>`;
   }
