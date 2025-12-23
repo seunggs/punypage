@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import type { JSONContent } from '@tiptap/core';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { createChatWebSocket, interruptChat, type ChatWebSocket } from '@/lib/api/chat';
@@ -7,10 +6,11 @@ import { useUpdateChatSession } from '../hooks/useChatSession';
 import { useSaveChatMessage } from '../hooks/useChatMessages';
 import { useLoadMessages } from '../hooks/useLoadMessages';
 import type { ChatSession } from '../types';
+import { useQueryClient } from '@tanstack/react-query';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { MessageSquare, Loader2 } from 'lucide-react';
 import { useDocument } from '@/features/documents/hooks/useDocument';
-import { convertToMarkdown } from '@/features/documents/utils/convertToMarkdown';
+import { formatDocumentContext } from '@/features/documents/utils/formatDocumentContext';
 import { hashDocument } from '@/features/documents/utils/hashDocument';
 
 interface Message {
@@ -18,12 +18,24 @@ interface Message {
   content: string;
 }
 
+interface ToolCallDisplay {
+  id: string;
+  tool_name: string;
+  input: Record<string, any>;
+  result?: any;
+  is_error?: boolean;
+}
+
+type ChatEvent =
+  | { type: 'message'; data: Message }
+  | { type: 'tool_call'; data: ToolCallDisplay };
+
 interface ChatPanelProps {
   session: ChatSession;
 }
 
 export function ChatPanel({ session }: ChatPanelProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [events, setEvents] = useState<ChatEvent[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [isInterrupting, setIsInterrupting] = useState(false);
@@ -38,16 +50,25 @@ export function ChatPanel({ session }: ChatPanelProps) {
   const { data: document } = useDocument(session.document_id || '');
   const updateSession = useUpdateChatSession();
   const saveMessage = useSaveChatMessage();
+  const queryClient = useQueryClient();
 
-  // Load messages from database
+  // Load messages from database - ONLY on initial load
   useEffect(() => {
-    if (loadedMessages) {
-      setMessages(
-        loadedMessages.map((msg) => ({
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content,
-        }))
-      );
+    if (loadedMessages && loadedMessages.length > 0) {
+      setEvents((prevEvents) => {
+        // If we already have events, don't overwrite them (preserves tool calls during streaming)
+        if (prevEvents.length > 0) {
+          return prevEvents;
+        }
+
+        return loadedMessages.map((msg) => ({
+          type: 'message' as const,
+          data: {
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+          },
+        }));
+      });
     }
   }, [loadedMessages]);
 
@@ -57,7 +78,13 @@ export function ChatPanel({ session }: ChatPanelProps) {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, streamingContent]);
+  }, [events, streamingContent]);
+
+  // Reset document hash and events when session changes (switching chats)
+  useEffect(() => {
+    lastDocumentHashRef.current = null;
+    setEvents([]); // Clear events so messages can be reloaded for new session
+  }, [session.id]);
 
   // Reset refs when switching sessions
   useEffect(() => {
@@ -73,78 +100,154 @@ export function ChatPanel({ session }: ChatPanelProps) {
       wsRef.current = null;
     }
 
-    // Create WebSocket connection
-    const ws = createChatWebSocket(session.id, session.sdk_session_id || undefined, {
-      onJoined: (roomId) => {
-        // Room joined successfully
-      },
-      onSdkSessionId: (sdkSessionId) => {
-        // Save SDK session ID to database (sent after first message)
-        if (!session.sdk_session_id) {
-          updateSession.mutate({
-            id: session.id,
-            sdk_session_id: sdkSessionId,
-          });
-        }
-      },
-      onMessage: (msg) => {
-        // Accumulate streaming content in both ref and state
-        streamingContentRef.current += msg.content;
-        setStreamingContent((prev) => prev + msg.content);
-      },
-      onDone: () => {
-        // onDone is called once when WebSocket receives stop event
-        const content = streamingContentRef.current;
+    // Create WebSocket connection (async)
+    const initWebSocket = async () => {
+      try {
+        const ws = await createChatWebSocket(session.id, session.sdk_session_id || undefined, {
+          onJoined: (roomId) => {
+            // Room joined successfully
+          },
+          onSdkSessionId: (sdkSessionId) => {
+            // Save SDK session ID to database (sent after first message)
+            if (!session.sdk_session_id) {
+              updateSession.mutate({
+                id: session.id,
+                sdk_session_id: sdkSessionId,
+              });
+            }
+          },
+          onMessage: (msg) => {
+            // Accumulate streaming content in both ref and state
+            streamingContentRef.current += msg.content;
+            setStreamingContent((prev) => prev + msg.content);
+          },
+          onToolUse: (toolUse) => {
+            setEvents((prev) => [
+              ...prev,
+              {
+                type: 'tool_call' as const,
+                data: {
+                  id: toolUse.tool_use_id,
+                  tool_name: toolUse.tool_name,
+                  input: toolUse.input,
+                },
+              },
+            ]);
+          },
+          onToolResult: (toolResult) => {
+            // Update tool call with result
+            setEvents((prev) =>
+              prev.map((event) => {
+                if (event.type === 'tool_call' && event.data.id === toolResult.tool_use_id) {
+                  return {
+                    ...event,
+                    data: {
+                      ...event.data,
+                      result: toolResult.content,
+                      is_error: toolResult.is_error,
+                    },
+                  };
+                }
+                return event;
+              })
+            );
+          },
+          onCacheInvalidate: (cacheEvent) => {
+            console.log('[CACHE INVALIDATE] Event received on frontend:', cacheEvent);
 
-        if (content) {
-          // Add to messages
-          setMessages((prev) => [...prev, { role: 'assistant', content }]);
+            // Invalidate React Query cache when document is created/updated
+            const toolName = cacheEvent.tool_name;
+            console.log('[CACHE INVALIDATE] Tool name:', toolName);
+            console.log('[CACHE INVALIDATE] Session document_id:', session.document_id);
 
-          // Save to database - only runs once because onDone fires once
-          saveMessage.mutate({
-            session_id: session.id,
-            role: 'assistant',
-            content,
-          });
-        }
+            if (toolName === 'mcp__punypage_internal__update_document' && session.document_id) {
+              console.log('[CACHE INVALIDATE] ✅ Invalidating cache for update_document');
+              queryClient.invalidateQueries({ queryKey: ['documents', session.document_id] });
+              queryClient.invalidateQueries({ queryKey: ['documents'] });
+            }
 
-        // Clear
-        streamingContentRef.current = '';
-        setStreamingContent('');
-        setIsStreaming(false);
-      },
-      onError: (error) => {
-        // Skip showing error if this was an intentional interrupt
-        if (isIntentionalInterruptRef.current) {
-          isIntentionalInterruptRef.current = false;
-          return;
-        }
+            if (toolName === 'mcp__punypage_internal__create_document') {
+              console.log('[CACHE INVALIDATE] ✅ Invalidating cache for create_document');
+              queryClient.invalidateQueries({ queryKey: ['documents'] });
+            }
+          },
+          onDone: () => {
+            // onDone is called once when WebSocket receives stop event
+            const content = streamingContentRef.current;
 
-        console.error('WebSocket error:', error);
-        setMessages((prev) => [
+            if (content) {
+              // Add to events
+              setEvents((prev) => [
+                ...prev,
+                { type: 'message' as const, data: { role: 'assistant' as const, content } },
+              ]);
+
+              // Save to database - only runs once because onDone fires once
+              saveMessage.mutate({
+                session_id: session.id,
+                role: 'assistant',
+                content,
+              });
+            }
+
+            // Clear
+            streamingContentRef.current = '';
+            setStreamingContent('');
+            setIsStreaming(false);
+          },
+          onError: (error) => {
+            // Skip showing error if this was an intentional interrupt
+            if (isIntentionalInterruptRef.current) {
+              isIntentionalInterruptRef.current = false;
+              return;
+            }
+
+            console.error('WebSocket error:', error);
+            setEvents((prev) => [
+              ...prev,
+              {
+                type: 'message' as const,
+                data: {
+                  role: 'assistant' as const,
+                  content: `Error: ${error}`,
+                },
+              },
+            ]);
+            setStreamingContent('');
+            setIsStreaming(false);
+          },
+          onConnected: () => {
+            // WebSocket connected
+          },
+          onDisconnected: () => {
+            // WebSocket disconnected
+          },
+        });
+
+        wsRef.current = ws;
+      } catch (error) {
+        console.error('Failed to create WebSocket:', error);
+        setEvents((prev) => [
           ...prev,
           {
-            role: 'assistant',
-            content: `Error: ${error}`,
+            type: 'message' as const,
+            data: {
+              role: 'assistant' as const,
+              content: 'Error: Failed to connect to chat. Please ensure you are logged in.',
+            },
           },
         ]);
-        setStreamingContent('');
-        setIsStreaming(false);
-      },
-      onConnected: () => {
-        // WebSocket connected
-      },
-      onDisconnected: () => {
-        // WebSocket disconnected
-      },
-    });
+      }
+    };
 
-    wsRef.current = ws;
+    initWebSocket();
 
     // Cleanup: close WebSocket when unmounting or session changes
     return () => {
-      ws.close();
-      wsRef.current = null;
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
     };
   }, [session.id]);
 
@@ -161,10 +264,10 @@ export function ChatPanel({ session }: ChatPanelProps) {
       // Save partial response if any content was streamed
       if (streamingContent) {
         // Add both assistant message and interrupted marker in single update
-        setMessages((prev) => [
+        setEvents((prev) => [
           ...prev,
-          { role: 'assistant', content: streamingContent },
-          { role: 'user', content: 'Interrupted' },
+          { type: 'message', data: { role: 'assistant', content: streamingContent } },
+          { type: 'message', data: { role: 'user', content: 'Interrupted' } },
         ]);
 
         // Save assistant message to Supabase
@@ -182,9 +285,9 @@ export function ChatPanel({ session }: ChatPanelProps) {
         );
       } else {
         // No content streamed yet, just add interrupted message
-        setMessages((prev) => [
+        setEvents((prev) => [
           ...prev,
-          { role: 'user', content: 'Interrupted' },
+          { type: 'message', data: { role: 'user', content: 'Interrupted' } },
         ]);
       }
 
@@ -218,11 +321,14 @@ export function ChatPanel({ session }: ChatPanelProps) {
     // Check WebSocket connection and join status
     if (!wsRef.current || !wsRef.current.isConnected()) {
       console.error('WebSocket not connected');
-      setMessages((prev) => [
+      setEvents((prev) => [
         ...prev,
         {
-          role: 'assistant',
-          content: 'Error: Not connected to chat server',
+          type: 'message',
+          data: {
+            role: 'assistant',
+            content: 'Error: Not connected to chat server',
+          },
         },
       ]);
       return;
@@ -230,11 +336,14 @@ export function ChatPanel({ session }: ChatPanelProps) {
 
     if (!wsRef.current.isJoined()) {
       console.error('WebSocket not joined to session yet');
-      setMessages((prev) => [
+      setEvents((prev) => [
         ...prev,
         {
-          role: 'assistant',
-          content: 'Error: Joining session, please wait...',
+          type: 'message',
+          data: {
+            role: 'assistant',
+            content: 'Error: Joining session, please wait...',
+          },
         },
       ]);
       return;
@@ -245,7 +354,7 @@ export function ChatPanel({ session }: ChatPanelProps) {
       role: 'user',
       content: message,
     };
-    setMessages((prev) => [...prev, userMessage]);
+    setEvents((prev) => [...prev, { type: 'message', data: userMessage }]);
 
     // Save ONLY user message to Supabase (not document context)
     saveMessage.mutate(
@@ -267,15 +376,25 @@ export function ChatPanel({ session }: ChatPanelProps) {
 
     if (document) {
       // Hash the current document
-      const currentHash = hashDocument(document.content as JSONContent, document.title);
+      const currentHash = hashDocument(document.content, document.title);
 
       // Only include document if it changed since last message
       if (currentHash !== lastDocumentHashRef.current) {
-        const documentContext = convertToMarkdown(document.content as JSONContent, document.title);
+        const documentContext = formatDocumentContext(document.id, document.content, document.title);
         messageToSend = `${documentContext}\n\n${message}`;
         lastDocumentHashRef.current = currentHash;
         documentIncluded = true;
       }
+    }
+
+    // 🔍 DEBUG: Log the actual message being sent to agent (development only)
+    if (import.meta.env.DEV) {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📤 MESSAGE SENT TO AGENT SDK:');
+      console.log(`📄 Document context included: ${documentIncluded}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(messageToSend);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     }
 
     setIsStreaming(true);
@@ -304,7 +423,7 @@ export function ChatPanel({ session }: ChatPanelProps) {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
-        {messages.length === 0 && !streamingContent && (
+        {events.length === 0 && !streamingContent && (
           <div className="flex items-center justify-center h-full">
             <Empty>
               <EmptyHeader>
@@ -320,9 +439,40 @@ export function ChatPanel({ session }: ChatPanelProps) {
           </div>
         )}
 
-        {messages.map((msg, index) => (
-          <ChatMessage key={index} role={msg.role} content={msg.content} />
-        ))}
+        {events.map((event, index) => {
+          if (event.type === 'message') {
+            return <ChatMessage key={index} role={event.data.role} content={event.data.content} />;
+          } else if (event.type === 'tool_call') {
+            const toolCall = event.data;
+            return (
+              <div
+                key={toolCall.id}
+                className="mb-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 shadow-xs"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    🔧 {toolCall.tool_name}
+                  </span>
+                  {toolCall.result && !toolCall.is_error && (
+                    <span className="text-xs text-green-600 dark:text-green-400">✓ Completed</span>
+                  )}
+                  {toolCall.is_error && (
+                    <span className="text-xs text-red-600 dark:text-red-400">✗ Error</span>
+                  )}
+                </div>
+                <div className="text-xs text-gray-600 dark:text-gray-400 font-mono">
+                  {JSON.stringify(toolCall.input, null, 2)}
+                </div>
+                {toolCall.result && (
+                  <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                    <span className="font-medium">Result:</span> {String(toolCall.result)}
+                  </div>
+                )}
+              </div>
+            );
+          }
+          return null;
+        })}
 
         {isStreaming && !streamingContent && (
           <div className="flex items-center gap-2 mb-4 text-gray-500 dark:text-gray-400">

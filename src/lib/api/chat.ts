@@ -5,10 +5,30 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface ToolUse {
+  tool_use_id: string;
+  tool_name: string;
+  input: Record<string, any>;
+}
+
+export interface ToolResult {
+  tool_use_id: string;
+  content: any;
+  is_error: boolean;
+}
+
+export interface CacheInvalidateEvent {
+  tool_name: string;
+  tool_response: Record<string, any>;
+}
+
 export interface ChatWebSocketCallbacks {
   onJoined?: (roomId: string) => void;
   onSdkSessionId?: (sdkSessionId: string) => void;
   onMessage: (message: ChatMessage) => void;
+  onToolUse?: (toolUse: ToolUse) => void;
+  onToolResult?: (toolResult: ToolResult) => void;
+  onCacheInvalidate?: (cacheEvent: CacheInvalidateEvent) => void;
   onDone: () => void;
   onError: (error: string) => void;
   onConnected?: () => void;
@@ -38,14 +58,25 @@ export interface ChatWebSocket {
  * @param callbacks - Event handlers for WebSocket events
  * @returns WebSocket control object
  */
-export function createChatWebSocket(
+export async function createChatWebSocket(
   roomId: string,
   sdkSessionId: string | undefined,
   callbacks: ChatWebSocketCallbacks
-): ChatWebSocket {
-  // Convert HTTP URL to WebSocket URL
+): Promise<ChatWebSocket> {
+  // Get Supabase auth token
+  const { supabase } = await import('@/lib/supabase');
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    callbacks.onError('Not authenticated. Please log in.');
+    throw new Error('No auth session');
+  }
+
+  // Convert HTTP URL to WebSocket URL and add auth token as query param
   const wsUrl = API_URL.replace('http://', 'ws://').replace('https://', 'wss://');
-  const ws = new WebSocket(`${wsUrl}/api/chat/ws`);
+  const ws = new WebSocket(`${wsUrl}/api/chat/ws?token=${session.access_token}`);
 
   let connected = false;
   let joined = false;
@@ -82,6 +113,12 @@ export function createChatWebSocket(
           role: data.role,
           content: data.content,
         });
+      } else if (data.type === 'tool_use') {
+        callbacks.onToolUse?.(data);
+      } else if (data.type === 'tool_result') {
+        callbacks.onToolResult?.(data);
+      } else if (data.type === 'cache_invalidate') {
+        callbacks.onCacheInvalidate?.(data);
       } else if (data.type === 'done') {
         callbacks.onDone();
       } else if (data.type === 'error') {

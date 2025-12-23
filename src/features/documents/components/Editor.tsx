@@ -8,7 +8,7 @@ import { EditorBubbleMenu } from './EditorBubbleMenu';
 
 interface EditorProps {
   content: string | JSONContent | null;
-  onUpdate: (content: JSONContent) => void;
+  onUpdate: (content: string) => void;
 }
 
 export function Editor({ content, onUpdate }: EditorProps) {
@@ -31,7 +31,9 @@ export function Editor({ content, onUpdate }: EditorProps) {
       },
     },
     onUpdate: ({ editor }) => {
-      onUpdate(editor.getJSON());
+      // Convert editor content to markdown before saving
+      const markdown = editor.getMarkdown();
+      onUpdate(markdown);
     },
   });
 
@@ -39,21 +41,11 @@ export function Editor({ content, onUpdate }: EditorProps) {
   useEffect(() => {
     if (editor && content !== null) {
       if (typeof content === 'string') {
-        // Check if string is JSON or markdown
-        try {
-          // Try parsing as JSON first
-          const parsed = JSON.parse(content);
-          if (parsed && typeof parsed === 'object' && parsed.type === 'doc') {
-            editor.commands.setContent(parsed);
-          } else {
-            throw new Error('Not a TipTap JSON document');
-          }
-        } catch {
-          // If not JSON, treat as markdown
-          const json = editor.markdown.parse(content);
-          editor.commands.setContent(json);
-        }
+        // Content from database is markdown - parse it to JSON first
+        const json = editor.markdown.parse(content);
+        editor.commands.setContent(json);
       } else if (typeof content === 'object') {
+        // Legacy JSONContent support
         editor.commands.setContent(content);
       }
     }

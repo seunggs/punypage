@@ -1,15 +1,13 @@
-import type { JSONContent } from '@tiptap/core';
-
 /**
  * Creates a simple hash of document content and title for change detection
  * Uses DJB2 hash algorithm which is fast and sufficient for detecting changes
  *
- * @param content - TipTap JSONContent from the editor
+ * @param content - Markdown content from the database
  * @param title - Document title
  * @returns Hash string representing the document state
  */
 export function hashDocument(
-  content: JSONContent | null | undefined,
+  content: string | null | undefined,
   title: string
 ): string {
   const payload = JSON.stringify({ content, title });
