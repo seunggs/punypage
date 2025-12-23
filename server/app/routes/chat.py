@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from app.agents.chat_agent import ChatStreamMessage
 from app.core.session_manager import session_manager
 from app.core.auth import validate_websocket_token
+from app.constants import DOCUMENT_MUTATION_TOOLS, MCP_TOOL_CREATE_DOCUMENT, MCP_TOOL_UPDATE_DOCUMENT
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
 router = APIRouter()
@@ -16,6 +17,36 @@ logger = logging.getLogger(__name__)
 
 # Session ID validation pattern (UUID format)
 SESSION_ID_PATTERN = re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
+
+
+async def drain_cache_queue(cache_queue: Optional[asyncio.Queue], websocket: WebSocket) -> None:
+    """
+    Drain all cache invalidation events from queue and send to WebSocket.
+
+    Args:
+        cache_queue: Optional queue containing cache invalidation events
+        websocket: WebSocket connection to send events to
+    """
+    if not cache_queue:
+        return
+
+    logger.debug(f"Draining cache queue. Queue size: {cache_queue.qsize()}")
+
+    while True:
+        try:
+            cache_event = cache_queue.get_nowait()
+            logger.info(f"Sending cache_invalidate event: {cache_event['tool_name']}")
+            await websocket.send_json({
+                'type': 'cache_invalidate',
+                'tool_name': cache_event['tool_name'],
+                'tool_response': cache_event['tool_response']
+            })
+        except asyncio.QueueEmpty:
+            logger.debug(f"Cache queue drained. Final size: {cache_queue.qsize()}")
+            break
+        except Exception as e:
+            logger.error(f"Error draining cache queue: {e}", exc_info=True)
+            break
 
 
 class InterruptRequest(BaseModel):
@@ -281,7 +312,7 @@ async def chat_websocket(websocket: WebSocket):
                         # Send tool use events
                         tool_use = wrapped_msg.get_tool_use()
                         if tool_use:
-                            logger.info(f"[WS] Sending tool_use: {tool_use['tool_name']}")
+                            logger.debug(f"Sending tool_use: {tool_use['tool_name']}")
                             await websocket.send_json({
                                 'type': 'tool_use',
                                 **tool_use
@@ -290,57 +321,17 @@ async def chat_websocket(websocket: WebSocket):
                         # Send tool result events
                         tool_result = wrapped_msg.get_tool_result()
                         if tool_result:
-                            logger.info(f"[WS] Sending tool_result for tool_use_id: {tool_result['tool_use_id']}")
+                            logger.debug(f"Sending tool_result for tool_use_id: {tool_result['tool_use_id']}")
                             await websocket.send_json({
                                 'type': 'tool_result',
                                 **tool_result
                             })
 
-                        # Check for cache invalidation events - use try/except instead of empty() check
-                        if cache_invalidate_queue:
-                            logger.info(f"[CACHE CHECK] Queue size: {cache_invalidate_queue.qsize()}")
-                            while True:
-                                try:
-                                    logger.info(f"[CACHE LOOP] Attempting to get event from queue")
-                                    cache_event = cache_invalidate_queue.get_nowait()
-                                    logger.info(f"[CACHE LOOP] ✅ Got event from queue: {cache_event}")
-                                    logger.info(f"[WS] Sending cache_invalidate event: {cache_event['tool_name']}")
-                                    await websocket.send_json({
-                                        'type': 'cache_invalidate',
-                                        'tool_name': cache_event['tool_name'],
-                                        'tool_response': cache_event['tool_response']
-                                    })
-                                    logger.info(f"[WS] ✅ Successfully sent cache_invalidate event")
-                                except asyncio.QueueEmpty:
-                                    logger.info(f"[CACHE LOOP] Queue is empty, breaking")
-                                    break
-                                except Exception as e:
-                                    logger.error(f"[CACHE LOOP] ❌ Unexpected exception: {e}", exc_info=True)
-                                    break
+                        # Check for cache invalidation events during streaming
+                        await drain_cache_queue(cache_invalidate_queue, websocket)
 
                     # Drain any remaining cache invalidation events
-                    logger.info(f"[DRAIN CHECK] Reached drain code. cache_invalidate_queue is None: {cache_invalidate_queue is None}")
-                    if cache_invalidate_queue:
-                        logger.info(f"[DRAIN CHECK] About to drain cache queue. Queue size: {cache_invalidate_queue.qsize()}")
-                        while True:
-                            try:
-                                logger.info(f"[DRAIN LOOP] Attempting to get event from queue")
-                                cache_event = cache_invalidate_queue.get_nowait()
-                                logger.info(f"[DRAIN LOOP] ✅ Got event from queue: {cache_event}")
-                                logger.info(f"[WS] Sending final cache_invalidate event: {cache_event['tool_name']}")
-                                await websocket.send_json({
-                                    'type': 'cache_invalidate',
-                                    'tool_name': cache_event['tool_name'],
-                                    'tool_response': cache_event['tool_response']
-                                })
-                                logger.info(f"[WS] ✅ Successfully sent final cache_invalidate event")
-                            except asyncio.QueueEmpty:
-                                logger.info(f"[DRAIN LOOP] Queue is empty, breaking")
-                                break
-                            except Exception as e:
-                                logger.error(f"[DRAIN LOOP] ❌ Unexpected exception: {e}", exc_info=True)
-                                break
-                        logger.info(f"[DRAIN CHECK] Finished draining. Queue size: {cache_invalidate_queue.qsize()}")
+                    await drain_cache_queue(cache_invalidate_queue, websocket)
 
                     # Send SDK session ID if we got one (for frontend to persist)
                     if sdk_session_id_to_send:

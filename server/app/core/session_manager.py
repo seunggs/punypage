@@ -7,6 +7,7 @@ import asyncio
 from typing import Dict, Optional, Callable
 import logging
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, HookMatcher
+from app.constants import DOCUMENT_MUTATION_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -60,30 +61,30 @@ class SessionManager:
             # Instead of using a callback, put events directly in the queue
             async def post_tool_use_hook(input_data, tool_use_id, context):
                 """Hook that fires after document operations to trigger cache invalidation"""
-                logger.info(f"[POST TOOL USE HOOK] Fired! input_data keys: {input_data.keys()}")
-                logger.info(f"[POST TOOL USE HOOK] tool_use_id: {tool_use_id}")
+                logger.debug(f"[POST TOOL USE HOOK] Fired! input_data keys: {input_data.keys()}")
+                logger.debug(f"[POST TOOL USE HOOK] tool_use_id: {tool_use_id}")
 
                 tool_name = input_data.get('tool_name', '')
                 tool_response = input_data.get('tool_response', {})
 
-                logger.info(f"[POST TOOL USE HOOK] Extracted tool_name: {tool_name}")
+                logger.debug(f"[POST TOOL USE HOOK] Extracted tool_name: {tool_name}")
 
                 # Check if this is a document operation
-                if tool_name in ['mcp__punypage_internal__create_document', 'mcp__punypage_internal__update_document']:
-                    logger.info(f"[POST TOOL USE HOOK] ✅ MATCHED! Putting event in queue for {tool_name}")
+                if tool_name in DOCUMENT_MUTATION_TOOLS:
+                    logger.info(f"Cache invalidation queued for {tool_name}")
                     # Put directly in the persistent queue - no callback needed
                     await cache_queue.put({
                         'tool_name': tool_name,
                         'tool_response': tool_response
                     })
-                    logger.info(f"[POST TOOL USE HOOK] Event queued. Queue size: {cache_queue.qsize()}")
+                    logger.debug(f"[POST TOOL USE HOOK] Event queued. Queue size: {cache_queue.qsize()}")
                 else:
-                    logger.info(f"[POST TOOL USE HOOK] ❌ NOT MATCHED. Tool {tool_name} is not a document operation")
+                    logger.debug(f"[POST TOOL USE HOOK] Tool {tool_name} is not a document operation")
 
                 return {}
 
             # Add hook to options
-            logger.info(f"[HOOK REGISTRATION] Registering PostToolUse hook for cache invalidation")
+            logger.debug(f"[HOOK REGISTRATION] Registering PostToolUse hook for cache invalidation")
             existing_hooks = options.hooks or {}
             post_tool_use_hooks = existing_hooks.get('PostToolUse', [])
             post_tool_use_hooks.append(
@@ -95,7 +96,7 @@ class SessionManager:
             )
             existing_hooks['PostToolUse'] = post_tool_use_hooks
             options.hooks = existing_hooks
-            logger.info(f"[HOOK REGISTRATION] ✅ PostToolUse hook registered with matcher: mcp__punypage_internal__(create_document|update_document)")
+            logger.debug(f"[HOOK REGISTRATION] PostToolUse hook registered")
 
             # Create new client
             client = ClaudeSDKClient(options=options)
