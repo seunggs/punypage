@@ -21,27 +21,26 @@ class SessionManager:
 
     def __init__(self):
         self._clients: Dict[str, ClaudeSDKClient] = {}
+        self._cache_queues: Dict[str, asyncio.Queue] = {}  # Persist queues with clients
         self._lock = asyncio.Lock()
 
     async def get_or_create_client(
         self,
         session_id: str,
-        options: ClaudeAgentOptions,
-        on_cache_invalidate: Optional[Callable[[str, dict], any]] = None
-    ) -> tuple[ClaudeSDKClient, bool]:
+        options: ClaudeAgentOptions
+    ) -> tuple[ClaudeSDKClient, bool, asyncio.Queue]:
         """
         Get existing ClaudeSDKClient or create a new one. Idempotent.
 
         Args:
             session_id: Unique session identifier
             options: Client configuration options (used only if creating new)
-            on_cache_invalidate: Optional callback for cache invalidation events
-                                Called when document create/update tools complete
 
         Returns:
-            Tuple of (ClaudeSDKClient, was_created)
+            Tuple of (ClaudeSDKClient, was_created, cache_queue)
             - was_created=False: Existing client returned (reconnection)
             - was_created=True: New client created
+            - cache_queue: Persistent queue for cache invalidation events
 
         Note:
             Safe to call multiple times with same session_id.
@@ -50,43 +49,60 @@ class SessionManager:
         async with self._lock:
             if session_id in self._clients:
                 logger.info(f"Returning existing client for session: {session_id}")
-                return self._clients[session_id], False
+                cache_queue = self._cache_queues[session_id]
+                return self._clients[session_id], False, cache_queue
 
-            # Add PostToolUse hook for cache invalidation if callback provided
-            if on_cache_invalidate:
-                async def post_tool_use_hook(input_data, tool_use_id, context):
-                    """Hook that fires after document operations to trigger cache invalidation"""
-                    tool_name = input_data.get('tool_name', '')
-                    tool_response = input_data.get('tool_response', {})
+            # Create persistent cache queue for this session
+            cache_queue = asyncio.Queue()
+            self._cache_queues[session_id] = cache_queue
 
-                    logger.info(f"[POST TOOL USE HOOK] Tool: {tool_name}")
+            # Add PostToolUse hook for cache invalidation
+            # Instead of using a callback, put events directly in the queue
+            async def post_tool_use_hook(input_data, tool_use_id, context):
+                """Hook that fires after document operations to trigger cache invalidation"""
+                logger.info(f"[POST TOOL USE HOOK] Fired! input_data keys: {input_data.keys()}")
+                logger.info(f"[POST TOOL USE HOOK] tool_use_id: {tool_use_id}")
 
-                    # Check if this is a document operation
-                    if tool_name in ['mcp__punypage_internal__create_document', 'mcp__punypage_internal__update_document']:
-                        logger.info(f"[POST TOOL USE HOOK] Calling cache invalidation for {tool_name}")
-                        await on_cache_invalidate(tool_name, tool_response)
+                tool_name = input_data.get('tool_name', '')
+                tool_response = input_data.get('tool_response', {})
 
-                    return {}
+                logger.info(f"[POST TOOL USE HOOK] Extracted tool_name: {tool_name}")
 
-                # Add hook to options
-                existing_hooks = options.hooks or {}
-                post_tool_use_hooks = existing_hooks.get('PostToolUse', [])
-                post_tool_use_hooks.append(
-                    HookMatcher(
-                        matcher='mcp__punypage_internal__(create_document|update_document)',
-                        hooks=[post_tool_use_hook],
-                        timeout=30
-                    )
+                # Check if this is a document operation
+                if tool_name in ['mcp__punypage_internal__create_document', 'mcp__punypage_internal__update_document']:
+                    logger.info(f"[POST TOOL USE HOOK] ✅ MATCHED! Putting event in queue for {tool_name}")
+                    # Put directly in the persistent queue - no callback needed
+                    await cache_queue.put({
+                        'tool_name': tool_name,
+                        'tool_response': tool_response
+                    })
+                    logger.info(f"[POST TOOL USE HOOK] Event queued. Queue size: {cache_queue.qsize()}")
+                else:
+                    logger.info(f"[POST TOOL USE HOOK] ❌ NOT MATCHED. Tool {tool_name} is not a document operation")
+
+                return {}
+
+            # Add hook to options
+            logger.info(f"[HOOK REGISTRATION] Registering PostToolUse hook for cache invalidation")
+            existing_hooks = options.hooks or {}
+            post_tool_use_hooks = existing_hooks.get('PostToolUse', [])
+            post_tool_use_hooks.append(
+                HookMatcher(
+                    matcher='mcp__punypage_internal__(create_document|update_document)',
+                    hooks=[post_tool_use_hook],
+                    timeout=30
                 )
-                existing_hooks['PostToolUse'] = post_tool_use_hooks
-                options.hooks = existing_hooks
+            )
+            existing_hooks['PostToolUse'] = post_tool_use_hooks
+            options.hooks = existing_hooks
+            logger.info(f"[HOOK REGISTRATION] ✅ PostToolUse hook registered with matcher: mcp__punypage_internal__(create_document|update_document)")
 
             # Create new client
             client = ClaudeSDKClient(options=options)
             await client.connect()
             self._clients[session_id] = client
             logger.info(f"Created new client for session: {session_id}")
-            return client, True
+            return client, True, cache_queue
 
     async def get_client(self, session_id: str) -> Optional[ClaudeSDKClient]:
         """
@@ -100,6 +116,19 @@ class SessionManager:
         """
         async with self._lock:
             return self._clients.get(session_id)
+
+    async def get_cache_queue(self, session_id: str) -> Optional[asyncio.Queue]:
+        """
+        Get the cache queue for a session.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            asyncio.Queue if exists, None otherwise
+        """
+        async with self._lock:
+            return self._cache_queues.get(session_id)
 
     async def remove_client(self, session_id: str) -> None:
         """
@@ -116,6 +145,9 @@ class SessionManager:
                 except Exception as e:
                     logger.error(f"Error disconnecting client for session {session_id}: {e}")
                 del self._clients[session_id]
+                # Also clean up the cache queue
+                if session_id in self._cache_queues:
+                    del self._cache_queues[session_id]
                 logger.info(f"Removed client for session: {session_id}")
 
     async def interrupt_session(self, session_id: str) -> None:

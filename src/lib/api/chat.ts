@@ -58,14 +58,25 @@ export interface ChatWebSocket {
  * @param callbacks - Event handlers for WebSocket events
  * @returns WebSocket control object
  */
-export function createChatWebSocket(
+export async function createChatWebSocket(
   roomId: string,
   sdkSessionId: string | undefined,
   callbacks: ChatWebSocketCallbacks
-): ChatWebSocket {
-  // Convert HTTP URL to WebSocket URL
+): Promise<ChatWebSocket> {
+  // Get Supabase auth token
+  const { supabase } = await import('@/lib/supabase');
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    callbacks.onError('Not authenticated. Please log in.');
+    throw new Error('No auth session');
+  }
+
+  // Convert HTTP URL to WebSocket URL and add auth token as query param
   const wsUrl = API_URL.replace('http://', 'ws://').replace('https://', 'wss://');
-  const ws = new WebSocket(`${wsUrl}/api/chat/ws`);
+  const ws = new WebSocket(`${wsUrl}/api/chat/ws?token=${session.access_token}`);
 
   let connected = false;
   let joined = false;

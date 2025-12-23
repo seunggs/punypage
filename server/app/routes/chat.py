@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from typing import Optional
 import logging
 import re
@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from app.agents.chat_agent import ChatStreamMessage
 from app.core.session_manager import session_manager
+from app.core.auth import validate_websocket_token
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
 router = APIRouter()
@@ -63,14 +64,15 @@ async def chat_websocket(websocket: WebSocket):
     WebSocket endpoint for persistent chat conversations using join room pattern.
 
     Pattern:
-        1. Client connects to /chat/ws
-        2. Client sends join message with room_id (chat session UUID) and optional sdk_session_id
-        3. Server creates/resumes ClaudeSDKClient:
+        1. Client connects to /chat/ws?token=<jwt>
+        2. Server validates token and extracts user_id
+        3. Client sends join message with room_id (chat session UUID) and optional sdk_session_id
+        4. Server creates/resumes ClaudeSDKClient:
            - If sdk_session_id provided: resume Claude conversation
            - Otherwise: create new Claude conversation
-        4. Client can send multiple messages over same connection
-        5. After first message, server sends sdk_session_id to client for persistence
-        6. On disconnect, ClaudeSDKClient stays alive for reconnection
+        5. Client can send multiple messages over same connection
+        6. After first message, server sends sdk_session_id to client for persistence
+        7. On disconnect, ClaudeSDKClient stays alive for reconnection
 
     Client → Server Messages:
         {
@@ -108,23 +110,24 @@ async def chat_websocket(websocket: WebSocket):
             "error": "Error message"
         }
     """
-    logger.info("🔌 WebSocket connection attempt - accepting...")
+    # Validate auth token from query params
+    token = websocket.query_params.get('token')
+    try:
+        user_id = validate_websocket_token(token)
+        logger.info(f"🔌 WebSocket connection from authenticated user: {user_id}")
+    except HTTPException as e:
+        logger.error(f"WebSocket auth failed: {e.detail}")
+        # Must accept before closing in FastAPI
+        await websocket.accept()
+        await websocket.close(code=1008, reason=e.detail)
+        return
+
     await websocket.accept()
     logger.info("✅ WebSocket ACCEPTED - waiting for messages")
 
     current_room_id: Optional[str] = None
     client: Optional[ClaudeSDKClient] = None
-
-    # Cache invalidation queue for document operations
-    cache_invalidate_queue = asyncio.Queue()
-
-    async def on_cache_invalidate(tool_name: str, tool_response: dict):
-        """Callback from PostToolUse hook to emit cache invalidation events"""
-        logger.info(f"[CACHE INVALIDATE] Queueing event for tool: {tool_name}")
-        await cache_invalidate_queue.put({
-            'tool_name': tool_name,
-            'tool_response': tool_response
-        })
+    cache_invalidate_queue: Optional[asyncio.Queue] = None
 
     try:
         while True:
@@ -156,7 +159,9 @@ async def chat_websocket(websocket: WebSocket):
                     if existing_client:
                         # Client still in memory - reconnection during same server session
                         client = existing_client
-                        logger.info(f"Rejoined existing in-memory client for room: {room_id}")
+                        # Get the persistent cache queue for this session
+                        cache_invalidate_queue = await session_manager.get_cache_queue(room_id)
+                        logger.info(f"Rejoined existing in-memory client for room: {room_id}, queue: {cache_invalidate_queue is not None}")
                     else:
                         # Client not in memory - create new ClaudeSDKClient
                         if sdk_session_id:
@@ -167,9 +172,18 @@ async def chat_websocket(websocket: WebSocket):
                                     resume=sdk_session_id,
                                     permission_mode='bypassPermissions',
                                     include_partial_messages=True,
+                                    mcp_servers={
+                                        'punypage_internal': {
+                                            'command': 'python',
+                                            'args': ['-m', 'mcp_servers.punypage_internal.server'],
+                                            'env': {
+                                                'PUNYPAGE_USER_ID': user_id
+                                            }
+                                        }
+                                    }
                                 )
-                                client, was_created = await session_manager.get_or_create_client(
-                                    room_id, options, on_cache_invalidate
+                                client, was_created, cache_invalidate_queue = await session_manager.get_or_create_client(
+                                    room_id, options
                                 )
                                 logger.info(f"✅ Successfully resumed session for room: {room_id}")
                             except Exception as resume_error:
@@ -178,9 +192,18 @@ async def chat_websocket(websocket: WebSocket):
                                 options = ClaudeAgentOptions(
                                     permission_mode='bypassPermissions',
                                     include_partial_messages=True,
+                                    mcp_servers={
+                                        'punypage_internal': {
+                                            'command': 'python',
+                                            'args': ['-m', 'mcp_servers.punypage_internal.server'],
+                                            'env': {
+                                                'PUNYPAGE_USER_ID': user_id
+                                            }
+                                        }
+                                    }
                                 )
-                                client, was_created = await session_manager.get_or_create_client(
-                                    room_id, options, on_cache_invalidate
+                                client, was_created, cache_invalidate_queue = await session_manager.get_or_create_client(
+                                    room_id, options
                                 )
                                 logger.info(f"✅ Created new session (resume fallback) for room: {room_id}")
                         else:
@@ -188,10 +211,19 @@ async def chat_websocket(websocket: WebSocket):
                             options = ClaudeAgentOptions(
                                 permission_mode='bypassPermissions',
                                 include_partial_messages=True,
+                                mcp_servers={
+                                    'punypage_internal': {
+                                        'command': 'python',
+                                        'args': ['-m', 'mcp_servers.punypage_internal.server'],
+                                        'env': {
+                                            'PUNYPAGE_USER_ID': user_id
+                                        }
+                                    }
+                                }
                             )
                             logger.info(f"Creating new client for room: {room_id}")
-                            client, was_created = await session_manager.get_or_create_client(
-                                room_id, options, on_cache_invalidate
+                            client, was_created, cache_invalidate_queue = await session_manager.get_or_create_client(
+                                room_id, options
                             )
                             logger.info(f"✅ Created new client for room: {room_id}")
 
@@ -246,31 +278,69 @@ async def chat_websocket(websocket: WebSocket):
                                 'content': text_delta
                             })
 
-                        # Check for cache invalidation events
-                        while not cache_invalidate_queue.empty():
+                        # Send tool use events
+                        tool_use = wrapped_msg.get_tool_use()
+                        if tool_use:
+                            logger.info(f"[WS] Sending tool_use: {tool_use['tool_name']}")
+                            await websocket.send_json({
+                                'type': 'tool_use',
+                                **tool_use
+                            })
+
+                        # Send tool result events
+                        tool_result = wrapped_msg.get_tool_result()
+                        if tool_result:
+                            logger.info(f"[WS] Sending tool_result for tool_use_id: {tool_result['tool_use_id']}")
+                            await websocket.send_json({
+                                'type': 'tool_result',
+                                **tool_result
+                            })
+
+                        # Check for cache invalidation events - use try/except instead of empty() check
+                        if cache_invalidate_queue:
+                            logger.info(f"[CACHE CHECK] Queue size: {cache_invalidate_queue.qsize()}")
+                            while True:
+                                try:
+                                    logger.info(f"[CACHE LOOP] Attempting to get event from queue")
+                                    cache_event = cache_invalidate_queue.get_nowait()
+                                    logger.info(f"[CACHE LOOP] ✅ Got event from queue: {cache_event}")
+                                    logger.info(f"[WS] Sending cache_invalidate event: {cache_event['tool_name']}")
+                                    await websocket.send_json({
+                                        'type': 'cache_invalidate',
+                                        'tool_name': cache_event['tool_name'],
+                                        'tool_response': cache_event['tool_response']
+                                    })
+                                    logger.info(f"[WS] ✅ Successfully sent cache_invalidate event")
+                                except asyncio.QueueEmpty:
+                                    logger.info(f"[CACHE LOOP] Queue is empty, breaking")
+                                    break
+                                except Exception as e:
+                                    logger.error(f"[CACHE LOOP] ❌ Unexpected exception: {e}", exc_info=True)
+                                    break
+
+                    # Drain any remaining cache invalidation events
+                    logger.info(f"[DRAIN CHECK] Reached drain code. cache_invalidate_queue is None: {cache_invalidate_queue is None}")
+                    if cache_invalidate_queue:
+                        logger.info(f"[DRAIN CHECK] About to drain cache queue. Queue size: {cache_invalidate_queue.qsize()}")
+                        while True:
                             try:
+                                logger.info(f"[DRAIN LOOP] Attempting to get event from queue")
                                 cache_event = cache_invalidate_queue.get_nowait()
-                                logger.info(f"[WS] Sending cache_invalidate event: {cache_event['tool_name']}")
+                                logger.info(f"[DRAIN LOOP] ✅ Got event from queue: {cache_event}")
+                                logger.info(f"[WS] Sending final cache_invalidate event: {cache_event['tool_name']}")
                                 await websocket.send_json({
                                     'type': 'cache_invalidate',
                                     'tool_name': cache_event['tool_name'],
                                     'tool_response': cache_event['tool_response']
                                 })
+                                logger.info(f"[WS] ✅ Successfully sent final cache_invalidate event")
                             except asyncio.QueueEmpty:
+                                logger.info(f"[DRAIN LOOP] Queue is empty, breaking")
                                 break
-
-                    # Drain any remaining cache invalidation events
-                    while not cache_invalidate_queue.empty():
-                        try:
-                            cache_event = cache_invalidate_queue.get_nowait()
-                            logger.info(f"[WS] Sending final cache_invalidate event: {cache_event['tool_name']}")
-                            await websocket.send_json({
-                                'type': 'cache_invalidate',
-                                'tool_name': cache_event['tool_name'],
-                                'tool_response': cache_event['tool_response']
-                            })
-                        except asyncio.QueueEmpty:
-                            break
+                            except Exception as e:
+                                logger.error(f"[DRAIN LOOP] ❌ Unexpected exception: {e}", exc_info=True)
+                                break
+                        logger.info(f"[DRAIN CHECK] Finished draining. Queue size: {cache_invalidate_queue.qsize()}")
 
                     # Send SDK session ID if we got one (for frontend to persist)
                     if sdk_session_id_to_send:

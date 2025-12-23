@@ -30,6 +30,35 @@ class ChatStreamMessage:
         logger.debug(f"No text delta extracted from message type: {type(self.raw).__name__}")
         return None
 
+    def get_tool_use(self) -> Optional[dict]:
+        """Extract tool use from StreamEvent"""
+        if hasattr(self.raw, 'event') and isinstance(self.raw.event, dict):
+            event_type = self.raw.event.get('type')
+            if event_type == 'content_block_start':
+                content_block = self.raw.event.get('content_block', {})
+                if content_block.get('type') == 'tool_use':
+                    tool_data = {
+                        'tool_use_id': content_block.get('id'),
+                        'tool_name': content_block.get('name'),
+                        'input': content_block.get('input', {})
+                    }
+                    logger.info(f"[TOOL USE] Extracted: {tool_data['tool_name']} (id: {tool_data['tool_use_id']})")
+                    return tool_data
+        return None
+
+    def get_tool_result(self) -> Optional[dict]:
+        """Extract tool result from ToolResultMessage"""
+        # Check if this is a ToolResultMessage
+        if type(self.raw).__name__ == 'ToolResultMessage':
+            result_data = {
+                'tool_use_id': getattr(self.raw, 'tool_use_id', None),
+                'content': getattr(self.raw, 'content', None),
+                'is_error': getattr(self.raw, 'is_error', False)
+            }
+            logger.info(f"[TOOL RESULT] Extracted for tool_use_id: {result_data['tool_use_id']}, is_error: {result_data['is_error']}")
+            return result_data
+        return None
+
     def get_session_id(self) -> Optional[str]:
         """Extract session_id from result messages"""
         # Check for session_id attribute

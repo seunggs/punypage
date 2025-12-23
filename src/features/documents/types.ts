@@ -8,7 +8,6 @@ export interface Document {
   title: string;
   content: string; // Markdown text - UI converts to Tiptap JSON for rendering
   path: string;
-  is_folder: boolean;
   user_id: string;
   status: DocumentStatus;
   metadata: Json;
@@ -19,7 +18,6 @@ export interface Document {
 export interface CreateDocumentInput {
   title: string;
   path: string;
-  is_folder?: boolean;
   content?: string;
   status?: DocumentStatus;
   metadata?: Json;
@@ -28,7 +26,6 @@ export interface CreateDocumentInput {
 export interface UpdateDocumentInput {
   title?: string;
   path?: string;
-  is_folder?: boolean;
   content?: string;
   status?: DocumentStatus;
   metadata?: Json;
