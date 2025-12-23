@@ -44,6 +44,7 @@ class SearchResult(BaseModel):
     chunk_id: str
     document_id: str
     document_title: str
+    document_path: str
     section_heading: str | None
     content: str
     similarity_score: float
@@ -106,6 +107,7 @@ async def search_documents(
                 chunk_id=row["id"],
                 document_id=row["document_id"],
                 document_title=row["metadata"].get("document_title", "Untitled"),
+                document_path=row["document_path"],
                 section_heading=row["section_heading"],
                 content=row["content"],
                 similarity_score=row["similarity"],

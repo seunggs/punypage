@@ -9,6 +9,7 @@ CREATE OR REPLACE FUNCTION search_document_chunks(
 RETURNS TABLE (
   id uuid,
   document_id uuid,
+  document_path text,
   content text,
   section_heading text,
   metadata jsonb,
@@ -23,6 +24,7 @@ BEGIN
   SELECT
     document_chunks.id,
     document_chunks.document_id,
+    documents.path,
     document_chunks.content,
     document_chunks.section_heading,
     document_chunks.metadata,
