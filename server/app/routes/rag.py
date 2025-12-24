@@ -82,6 +82,9 @@ async def search_documents(
         pipeline = get_pipeline()
         openai_client = pipeline.openai_client
 
+        # Debug: Log user ID
+        logger.info(f"Search request from user: {user.get('id', 'unknown')}")
+
         # Generate embedding for query
         logger.info(f"Generating embedding for query: {request.query[:50]}...")
         embedding_response = openai_client.embeddings.create(
