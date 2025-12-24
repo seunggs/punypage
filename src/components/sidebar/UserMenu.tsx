@@ -15,8 +15,16 @@ export function UserMenu() {
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    navigate({ to: '/sign-in' });
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+
+    // Force clear local storage and navigate
+    // This ensures logout works even if the API call fails
+    localStorage.clear();
+    window.location.href = '/sign-in';
   };
 
   if (!user) {

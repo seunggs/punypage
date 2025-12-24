@@ -13,18 +13,28 @@ if (!API_URL) {
 }
 
 function transformBackendResponse(backendResponse: BackendSearchResponse): SearchResponse {
-  return {
-    query: backendResponse.query,
-    count: backendResponse.count,
-    results: backendResponse.results.map(
-      (result): SearchResult => ({
+  // Deduplicate: keep only the highest-scoring chunk per document
+  const documentMap = new Map<string, SearchResult>();
+
+  for (const result of backendResponse.results) {
+    const existing = documentMap.get(result.document_id);
+
+    // If this document not seen yet, or this chunk has higher similarity, use it
+    if (!existing || result.similarity_score > (existing as any).similarity_score) {
+      documentMap.set(result.document_id, {
         documentId: result.document_id,
         title: result.document_title,
         path: result.document_path,
         excerpt: result.content,
         sectionHeading: result.section_heading,
-      })
-    ),
+      });
+    }
+  }
+
+  return {
+    query: backendResponse.query,
+    count: documentMap.size,
+    results: Array.from(documentMap.values()),
   };
 }
 
@@ -47,7 +57,6 @@ export async function searchDocuments(query: SearchQuery): Promise<SearchRespons
     body: JSON.stringify({
       query: query.query,
       limit: query.limit || 10,
-      similarity_threshold: query.similarity_threshold || 0.7,
     }),
   });
 

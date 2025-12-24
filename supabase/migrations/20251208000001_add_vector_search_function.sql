@@ -1,10 +1,10 @@
 -- Create function for vector similarity search
--- This function performs cosine similarity search on document chunks
+-- Returns top-k most similar chunks using cosine similarity
 -- Filters results to only include chunks from documents owned by the authenticated user
 CREATE OR REPLACE FUNCTION search_document_chunks(
   query_embedding vector(1536),
-  match_threshold float DEFAULT 0.7,
-  match_count int DEFAULT 5
+  match_count int DEFAULT 10,
+  filter_user_id uuid DEFAULT NULL
 )
 RETURNS TABLE (
   id uuid,
@@ -31,8 +31,7 @@ BEGIN
     1 - (document_chunks.embedding <=> query_embedding) AS similarity
   FROM document_chunks
   INNER JOIN documents ON documents.id = document_chunks.document_id
-  WHERE documents.user_id = auth.uid()
-    AND 1 - (document_chunks.embedding <=> query_embedding) > match_threshold
+  WHERE (filter_user_id IS NULL OR documents.user_id = filter_user_id)
   ORDER BY document_chunks.embedding <=> query_embedding
   LIMIT match_count;
 END;

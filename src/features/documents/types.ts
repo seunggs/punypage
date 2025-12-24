@@ -61,7 +61,6 @@ export interface SearchResult {
 export interface SearchQuery {
   query: string;
   limit?: number;
-  similarity_threshold?: number;
 }
 
 export interface SearchResponse {

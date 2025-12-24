@@ -30,13 +30,7 @@ service_supabase: Client = create_client(
 class SearchRequest(BaseModel):
     """Request model for vector search"""
     query: str = Field(..., min_length=1, max_length=1000, description="Search query")
-    limit: int = Field(5, ge=1, le=20, description="Number of results to return")
-    similarity_threshold: float = Field(
-        0.7,
-        ge=0.0,
-        le=1.0,
-        description="Minimum similarity threshold (0-1)"
-    )
+    limit: int = Field(10, ge=1, le=50, description="Number of top-k results to return")
 
 
 class SearchResult(BaseModel):
@@ -82,8 +76,9 @@ async def search_documents(
         pipeline = get_pipeline()
         openai_client = pipeline.openai_client
 
-        # Debug: Log user ID
+        # Debug: Log user info
         logger.info(f"Search request from user: {user.get('id', 'unknown')}")
+        logger.info(f"Full user object: {user}")
 
         # Generate embedding for query
         logger.info(f"Generating embedding for query: {request.query[:50]}...")
@@ -92,16 +87,27 @@ async def search_documents(
             input=request.query
         )
         query_embedding = embedding_response.data[0].embedding
+        logger.info(f"Generated embedding with {len(query_embedding)} dimensions")
 
-        # Search using user-scoped client (RLS enforced via auth.uid() in SQL function)
+        # Search using user-scoped client (pass user_id explicitly since auth.uid() doesn't work via RPC)
+        # Using top-k retrieval (no threshold filtering)
+        logger.info(f"Calling search_document_chunks with limit={request.limit}, user_id={user.get('sub')}")
         response = user_supabase.rpc(
             "search_document_chunks",
             {
                 "query_embedding": query_embedding,
-                "match_threshold": request.similarity_threshold,
-                "match_count": request.limit
+                "match_count": request.limit,
+                "filter_user_id": user.get("sub")  # Pass user ID from JWT
             }
         ).execute()
+
+        logger.info(f"SQL function returned {len(response.data)} rows")
+        if len(response.data) > 0:
+            first = response.data[0]
+            logger.info(f"Top result: {first.get('metadata', {}).get('document_title', 'Unknown')} - similarity: {first.get('similarity', 'N/A')}")
+            if len(response.data) > 1:
+                second = response.data[1]
+                logger.info(f"2nd result: {second.get('metadata', {}).get('document_title', 'Unknown')} - similarity: {second.get('similarity', 'N/A')}")
 
         # Parse results
         results = []
