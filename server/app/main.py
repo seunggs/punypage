@@ -24,7 +24,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Frontend URL: {settings.frontend_url}")
 
     # Start RAG ingestion scheduler
-    scheduler = get_scheduler(interval_seconds=300)  # 5 minutes
+    scheduler = get_scheduler(interval_seconds=60)  # 1 minute
     scheduler.start()
     logger.info("RAG ingestion scheduler started")
 
