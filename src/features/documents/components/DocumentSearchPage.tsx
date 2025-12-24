@@ -14,7 +14,7 @@ export function DocumentSearchPage() {
   };
 
   return (
-    <div className="flex flex-col items-center p-8 gap-6">
+    <div className="flex flex-col p-8 gap-6">
       <SearchInput
         value={query}
         onChange={setQuery}

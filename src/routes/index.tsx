@@ -1,5 +1,4 @@
 import { createFileRoute } from '@tanstack/react-router'
-import logo from '../logo.svg'
 import { requireAuth } from '@/features/auth/utils/routeProtection'
 
 export const Route = createFileRoute('/')({
@@ -9,33 +8,34 @@ export const Route = createFileRoute('/')({
 
 function App() {
   return (
-    <div className="text-center">
-      <header className="min-h-screen flex flex-col items-center justify-center bg-[#282c34] text-white text-[calc(10px+2vmin)]">
-        <img
-          src={logo}
-          className="h-[40vmin] pointer-events-none animate-[spin_20s_linear_infinite]"
-          alt="logo"
-        />
-        <p>
-          Edit <code>src/routes/index.tsx</code> and save to reload.
+    <div className="flex flex-col items-center justify-center h-full p-8">
+      <div className="max-w-2xl space-y-6">
+        <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100">
+          Welcome to Punypage
+        </h1>
+
+        <p className="text-lg text-gray-600 dark:text-gray-300">
+          A powerful document management system with AI-powered search and editing capabilities.
         </p>
-        <a
-          className="text-[#61dafb] hover:underline"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-        <a
-          className="text-[#61dafb] hover:underline"
-          href="https://tanstack.com"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn TanStack
-        </a>
-      </header>
+
+        <div className="space-y-4 text-gray-700 dark:text-gray-400">
+          <div>
+            <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Features:</h2>
+            <ul className="list-disc list-inside space-y-1">
+              <li>Organize documents with hierarchical folder structure</li>
+              <li>Semantic search powered by RAG (Retrieval-Augmented Generation)</li>
+              <li>Rich text editing with markdown support</li>
+              <li>AI chat assistant for document insights</li>
+            </ul>
+          </div>
+
+          <div className="pt-4">
+            <p className="text-sm text-gray-500 dark:text-gray-500">
+              Get started by browsing your documents in the sidebar or use the search page to find what you need.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
